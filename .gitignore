@@ -19,6 +19,7 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+.venv/
 
 # 虚拟环境
 venv/
