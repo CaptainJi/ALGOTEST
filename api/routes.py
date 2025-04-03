@@ -1438,7 +1438,11 @@ async def execute_single_test_case(
             }
             
         log.info(f"成功加载测试用例: {case_id}")
-        state = load_result
+        # 使用字典合并更新state，保留原始字段
+        state = {
+            **state,
+            **load_result
+        }
         
         try:
             # 解析命令

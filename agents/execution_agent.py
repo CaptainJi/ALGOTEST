@@ -882,35 +882,57 @@ async def execute_command(state: ExecutionState) -> ExecutionState:
 async def save_result(state: ExecutionState) -> ExecutionState:
     """保存执行结果到数据库"""
     try:
-        case_id = state.get("current_case_id")
+        # 获取case_id，优先使用state中的case_id
+        case_id = state.get("case_id")
         if not case_id:
             raise ValueError("当前没有正在执行的测试用例")
             
         # 获取执行结果
-        all_results = state.get("execution_results", [])
-        execution_time = state.get("execution_time", 0)
+        execution_result = state.get("execution_result")
+        if not execution_result:
+            raise ValueError("没有执行结果")
+        
+        # 获取执行时间
+        execution_time = execution_result.get("execution_time", 0)
+        
+        # 获取所有结果
+        all_results = execution_result.get("all_results", [])
+        
+        # 将CommandStrategy对象转换为可序列化的字典
+        serializable_results = []
+        for result in all_results:
+            strategy = result.get("strategy")
+            if strategy:
+                # 将CommandStrategy对象转换为字典
+                strategy_dict = {
+                    "tool": strategy.tool,
+                    "parameters": strategy.parameters,
+                    "description": strategy.description
+                }
+            else:
+                strategy_dict = None
+                
+            # 创建新的可序列化结果字典
+            serializable_result = {
+                "strategy_index": result.get("strategy_index"),
+                "strategy": strategy_dict,
+                "result": result.get("result"),
+                "full_output": result.get("full_output", ""),
+                "raw_stdout": result.get("raw_stdout", ""),
+                "raw_stderr": result.get("raw_stderr", "")
+            }
+            serializable_results.append(serializable_result)
         
         # 判断执行是否成功
-        success = True  # 默认为成功
-        error_description = ""
-        
-        if not all_results:
-            success = False
-            error_description = "没有执行结果"
-        elif any(not result.get("success", True) for result in all_results):
-            success = False
-            # 获取第一个失败结果的错误信息
-            for result in all_results:
-                if not result.get("success", True):
-                    error_description = result.get("error", "未知错误")
-                    break
+        success = execution_result.get("success", False)
+        error_description = execution_result.get("error", "")
         
         # 构建结果数据
         result_data = {
             "success": success,
             "execution_time": execution_time,
             "error": error_description if not success else None,
-            "results": all_results
+            "results": serializable_results
         }
         
         # 获取原始命令输出
