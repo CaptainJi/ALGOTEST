@@ -46,13 +46,10 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # 编辑.env文件，填写必要的配置信息，特别是ZHIPU_API_KEY
+# 将指令格式文档放在data文件夹下
 ```
 
 ## 使用方法
-
-### 文件存储
-
-- **算法需求文档**：请将算法需求文档（PDF格式）放置在 `data/pdfs/` 目录下
 
 ### 启动服务
 ```bash
@@ -65,55 +62,196 @@ export API_RELOAD=true && python main.py
 ```
 
 ### API接口
-- **POST /api/generate-testcases**：直接从需求文档生成测试用例
 
-### 测试用例生成功能
+#### 文档管理
+- **POST /api/documents**：上传需求文档
+  - 请求：multipart/form-data格式，包含PDF文件
+  - 响应：返回文档ID和存储路径
 
-系统能够自动分析算法需求文档，生成测试用例。
+#### 算法镜像和数据集管理
+- **POST /api/documents/{document_id}/algorithm-image**：通过文档ID更新算法镜像地址
+  - 请求：JSON格式，包含algorithm_image字段
+  - 响应：返回更新成功的消息
+
+- **POST /api/documents/{document_id}/dataset-url**：通过文档ID更新数据集地址
+  - 请求：JSON格式，包含dataset_url字段
+  - 响应：返回更新成功的消息
+
+- **POST /api/tasks/{task_id}/algorithm-image**：通过任务ID更新算法镜像地址
+  - 请求：JSON格式，包含algorithm_image字段
+  - 响应：返回更新成功的消息
+
+- **POST /api/tasks/{task_id}/dataset-url**：通过任务ID更新数据集地址
+  - 请求：JSON格式，包含dataset_url字段
+  - 响应：返回更新成功的消息
+
+- **GET /api/documents/{document_id}/task-info**：获取文档关联的任务信息
+  - 请求：文档ID
+  - 响应：返回文档关联的任务信息，包括算法镜像地址和数据集URL
+
+#### 测试用例生成
+- **POST /api/documents/{document_id}/analyze**：分析文档并生成测试用例
+  - 请求：文档ID
+  - 响应：返回生成的测试用例列表
+
+- **POST /api/generate-testcases**：直接从上传文档生成测试用例
+  - 请求：multipart/form-data格式，包含PDF文件
+  - 响应：返回生成的测试用例列表
+
+#### 测试用例管理
+- **GET /api/testcases**：获取测试用例列表
+  - 参数：document_id（可选，按文档ID筛选）
+  - 响应：返回测试用例列表
+
+- **GET /api/testcases/{case_id}**：获取单个测试用例详情
+  - 参数：case_id（测试用例ID）
+  - 响应：返回测试用例详情
+
+- **POST /api/testcases**：创建新的测试用例
+  - 请求体：包含测试用例信息（名称、目的、步骤、预期结果、验证方法、所属文档ID）
+  - 响应：返回创建的测试用例
+
+- **PUT /api/testcases/{case_id}**：更新测试用例
+  - 请求体：包含要更新的测试用例字段
+  - 响应：返回更新后的测试用例
+
+- **DELETE /api/testcases/{case_id}**：删除测试用例
+  - 参数：case_id（测试用例ID）
+  - 响应：返回删除结果
+
+### 测试用例数据结构
 
 测试用例包含以下信息：
-- 测试名称：简短描述测试内容
-- 测试目的：详细说明测试什么功能或参数
-- 测试步骤：如何执行测试，包括具体的参数设置
-- 预期结果：测试应该产生什么结果
-- 验证方法：如何验证测试结果
+- **id**: 测试用例唯一标识
+- **document_id**: 所属文档ID
+- **name**: 测试名称
+- **purpose**: 测试目的
+- **steps**: 测试步骤
+- **expected_result**: 预期结果
+- **validation_method**: 验证方法
 
-### 生成测试用例
+### API文档
 
-使用 `POST /api/generate-testcases` 接口：
+系统提供了Swagger UI文档，可以通过访问 `http://localhost:8000/api/docs` 查看和测试API接口。
 
-1. 将算法需求文档（PDF格式）放置在 `data/pdfs/` 目录下
-2. 发送POST请求到 `/api/generate-testcases`，请求体包含 `doc_path` 参数，指定需求文档的相对路径
-3. 系统会直接返回生成的测试用例列表
+### 测试任务管理
 
-示例请求：
-```json
-{
-  "doc_path": "需求文档.pdf"
-}
+#### 获取所有测试任务
+
+获取数据库中所有的测试任务列表。
+
+```
+GET /api/tasks
 ```
 
-示例响应：
+**响应示例**：
+
 ```json
 {
-  "message": "成功从文档生成8个测试用例",
-  "test_cases": [
+  "message": "成功获取所有测试任务",
+  "tasks": [
     {
-      "id": "TC1741059293_f1f741f10322",
-      "name": "验证未佩戴面罩报警逻辑",
-      "purpose": "验证算法在识别到人员未佩戴面罩时是否能够正确触发报警。",
-      "steps": "设置参数 `visual_object=true`，`used_time_switch=true`，`alert_time_thresh=3`...",
-      "expected_result": "输出结果中的 `algorithm_data.is_alert` 应为 `true`...",
-      "validation_method": "检查输出结果中的 `algorithm_data.is_alert` 字段，确认其值为 `true`。"
+      "id": 1,
+      "task_id": "TASK_123456",
+      "algorithm_image": "example/algorithm:v1.0",
+      "dataset_url": "http://example.com/dataset",
+      "status": "completed",
+      "created_at": "2025-03-18T12:30:45",
+      "updated_at": "2025-03-18T14:20:30",
+      "test_cases_count": 5
     },
-    // 更多测试用例...
+    {
+      "id": 2,
+      "task_id": "TASK_789012",
+      "algorithm_image": "example/algorithm:v2.0",
+      "dataset_url": null,
+      "status": "pending",
+      "created_at": "2025-03-19T09:15:22",
+      "updated_at": "2025-03-19T09:15:22",
+      "test_cases_count": 0
+    }
   ]
 }
 ```
 
-## API文档
+### 任务执行和Docker管理
 
-系统提供了Swagger UI文档，可以通过访问 `http://localhost:8000/api/docs` 查看和测试API接口。
+#### 准备任务执行环境
+
+```
+POST /api/tasks/{task_id}/prepare
+```
+
+在执行测试任务前，准备Docker容器环境。该接口会根据任务信息设置Docker容器。
+
+**请求参数：**
+- **task_id** (路径参数): 测试任务ID
+
+**响应格式：**
+```json
+{
+  "success": true,
+  "task_id": "TASK_123456",
+  "container_name": "algotest_TASK_123456",
+  "algorithm_image": "example/algorithm:v1.0",
+  "dataset_url": "http://example.com/dataset"
+}
+```
+
+#### 设置算法Docker容器
+
+```
+POST /api/tasks/{task_id}/docker/setup
+```
+
+通过MCP在远程服务器上设置Docker容器，拉取算法镜像并启动容器。
+
+**请求参数：**
+- **task_id** (路径参数): 测试任务ID
+
+**响应格式：**
+```json
+{
+  "success": true,
+  "task_id": "TASK_123456",
+  "container_name": "algotest_TASK_123456",
+  "algorithm_image": "example/algorithm:v1.0",
+  "dataset_url": "http://example.com/dataset"
+}
+```
+
+#### 在Docker容器中执行命令
+
+```
+POST /api/tasks/{task_id}/docker/exec
+```
+
+通过MCP在远程服务器的Docker容器中执行命令
+
+**请求参数：**
+- **task_id** (路径参数): 测试任务ID
+- **command** (请求体): 要执行的命令
+
+**请求体格式：**
+```json
+{
+  "command": "ls -la /data"
+}
+```
+
+**响应格式：**
+```json
+{
+  "success": true,
+  "task_id": "TASK_123456",
+  "container_name": "algotest_TASK_123456",
+  "command": "ls -la /data",
+  "result": {
+    "stdout": "命令执行结果...",
+    "stderr": ""
+  }
+}
+```
 
 ## 开发指南
 

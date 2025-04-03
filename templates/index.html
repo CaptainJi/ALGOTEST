@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body p-4">
+                    <div class="row align-items-center">
+                        <div class="col-md-7">
+                            <h3 class="display-6 fw-bold mb-3">欢迎使用 <span style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ALGOTEST</span></h3>
+                            <p class="lead">
+                                ALGOTEST 是一个大模型驱动的算法测试系统，能够自动分析算法需求文档并生成测试用例。
+                            </p>
+                            <div class="d-flex flex-wrap mt-4">
+                                <a href="/documents/upload" class="btn btn-primary me-2 mb-2">
+                                    <i class="bi bi-upload me-1"></i> 上传文档
+                                </a>
+                                <a href="/documents" class="btn btn-outline-primary me-2 mb-2">
+                                    <i class="bi bi-file-earmark-text me-1"></i> 查看文档
+                                </a>
+                                <a href="/tasks" class="btn btn-outline-secondary mb-2">
+                                    <i class="bi bi-kanban me-1"></i> 任务管理
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-5 d-none d-md-block text-center">
+                            <img src="https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji/assets/rocket/3d/rocket_3d.png" alt="ALGOTEST" class="img-fluid" style="max-height: 200px; animation: float 3s ease-in-out infinite;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <!-- 统计卡片 -->
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card">
+                <div class="card-icon">
+                    <i class="bi bi-file-earmark-text"></i>
+                </div>
+                <h6 class="card-title">文档总数</h6>
+                <div class="card-value" id="documentsCount">0</div>
+                <p class="text-muted mb-0">已上传的需求文档</p>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card">
+                <div class="card-icon">
+                    <i class="bi bi-list-check"></i>
+                </div>
+                <h6 class="card-title">测试用例</h6>
+                <div class="card-value" id="testCasesCount">0</div>
+                <p class="text-muted mb-0">自动生成的测试用例</p>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card">
+                <div class="card-icon">
+                    <i class="bi bi-hourglass-split"></i>
+                </div>
+                <h6 class="card-title">待处理任务</h6>
+                <div class="card-value" id="pendingTasksCount">0</div>
+                <p class="text-muted mb-0">等待执行的任务</p>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="stat-card">
+                <div class="card-icon">
+                    <i class="bi bi-check2-circle"></i>
+                </div>
+                <h6 class="card-title">已完成任务</h6>
+                <div class="card-value" id="completedTasksCount">0</div>
+                <p class="text-muted mb-0">成功执行的任务</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-bar-chart-line me-2"></i>测试数据分析</span>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="chartDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            近7天
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="chartDropdown">
+                            <li><a class="dropdown-item" href="#">近7天</a></li>
+                            <li><a class="dropdown-item" href="#">近30天</a></li>
+                            <li><a class="dropdown-item" href="#">全部数据</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="testsChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-pie-chart me-2"></i>测试结果分布
+                </div>
+                <div class="card-body">
+                    <canvas id="resultsChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-clock-history me-2"></i>最近任务</span>
+                    <a href="/tasks" class="btn btn-sm btn-outline-primary">查看全部</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" id="recentTasksTable">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>任务ID</th>
+                                    <th>文档</th>
+                                    <th>测试用例</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        <span class="ms-2">加载任务列表...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 计数器动画效果
+    function animateValue(id, start, end, duration) {
+        if (start === end) return;
+        const range = end - start;
+        let current = start;
+        const increment = end > start ? 1 : -1;
+        const stepTime = Math.abs(Math.floor(duration / range));
+        const obj = document.getElementById(id);
+        const timer = setInterval(function() {
+            current += increment;
+            obj.innerHTML = current;
+            if (current == end) {
+                clearInterval(timer);
+            }
+        }, stepTime);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // 初始化图表
+        initCharts();
+        
+        // 加载系统状态数据
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                updateDashboardStats(data);
+                updateRecentTasks(data);
+                updateChartData(data);
+            })
+            .catch(error => {
+                console.error('获取任务数据失败:', error);
+            });
+    });
+
+    function updateDashboardStats(data) {
+        // 这里假设后端API已返回所需数据，实际应根据真实API调整
+        const tasks = data.tasks || [];
+        
+        // 计算统计数据
+        const pendingTasks = tasks.filter(task => ['created', 'preparing', 'executing'].includes(task.status)).length;
+        const completedTasks = tasks.filter(task => ['completed', 'failed'].includes(task.status)).length;
+        const documentsCount = tasks.filter(task => task.document_id).length;
+        const testCasesCount = tasks.reduce((sum, task) => sum + (task.test_cases_count || 0), 0);
+        
+        // 更新UI并添加动画效果
+        animateValue('pendingTasksCount', 0, pendingTasks, 1000);
+        animateValue('completedTasksCount', 0, completedTasks, 1000);
+        animateValue('documentsCount', 0, documentsCount, 1000);
+        animateValue('testCasesCount', 0, testCasesCount, 1000);
+    }
+
+    function updateRecentTasks(data) {
+        const tasks = data.tasks || [];
+        const tableBody = document.querySelector('#recentTasksTable tbody');
+        
+        if (tasks.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暂无任务</td></tr>';
+            return;
+        }
+        
+        // 对任务按创建时间排序，显示最近的5个
+        const recentTasks = [...tasks].sort((a, b) => 
+            new Date(b.created_at) - new Date(a.created_at)
+        ).slice(0, 5);
+        
+        tableBody.innerHTML = recentTasks.map(task => `
+            <tr>
+                <td>
+                    <span class="badge bg-light text-dark">${task.task_id.substring(0, 8)}</span>
+                </td>
+                <td>
+                    ${task.document_id ? 
+                        `<a href="/documents/${task.document_id}" class="text-decoration-none">${task.document_id.substring(0, 8)}</a>` : 
+                        '<span class="text-muted">-</span>'
+                    }
+                </td>
+                <td>${task.test_cases_count || 0}</td>
+                <td>
+                    <span class="badge ${getStatusBadgeClass(task.status)}">
+                        ${getStatusText(task.status)}
+                    </span>
+                </td>
+                <td>${formatDate(task.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="/tasks/${task.task_id}" class="btn btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        ${task.test_cases_count > 0 && task.status !== 'executing' ? 
+                            `<a href="/execution/${task.task_id}" class="btn btn-outline-success">
+                                <i class="bi bi-play-fill"></i>
+                            </a>` : 
+                            ''
+                        }
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    let testsChart, resultsChart;
+
+    function initCharts() {
+        // 测试数据分析图表
+        const testsCtx = document.getElementById('testsChart').getContext('2d');
+        testsChart = new Chart(testsCtx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 7}, (_, i) => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - (6 - i));
+                    return d.toLocaleDateString('zh-CN', {month: 'short', day: 'numeric'});
+                }),
+                datasets: [
+                    {
+                        label: '测试用例',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        borderColor: '#4b6cb7',
+                        backgroundColor: 'rgba(75, 108, 183, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: '测试任务',
+                        data: [0, 0, 0, 0, 0, 0, 0],
+                        borderColor: '#43cea2',
+                        backgroundColor: 'rgba(67, 206, 162, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            stepSize: 5
+                        },
+                        suggestedMax: function() {
+                            const maxValue = Math.max(
+                                ...this.chart.data.datasets[0].data,
+                                ...this.chart.data.datasets[1].data
+                            );
+                            return Math.min(maxValue + 5, Math.ceil(maxValue * 1.2));
+                        }
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        // 测试结果分布图表
+        const resultsCtx = document.getElementById('resultsChart').getContext('2d');
+        resultsChart = new Chart(resultsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['通过', '失败', '待执行'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: [
+                        'rgba(67, 206, 162, 0.8)',
+                        'rgba(248, 80, 50, 0.8)',
+                        'rgba(75, 108, 183, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(67, 206, 162, 1)',
+                        'rgba(248, 80, 50, 1)',
+                        'rgba(75, 108, 183, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%'
+            }
+        });
+    }
+
+    function updateChartData(data) {
+        const tasks = data.tasks || [];
+        
+        // 模拟过去7天的数据
+        const pastDaysTestCases = [5, 8, 12, 15, 18, 22, 25];
+        const pastDaysTasks = [1, 2, 2, 3, 3, 4, 5];
+        
+        // 更新测试数据分析图表
+        testsChart.data.datasets[0].data = pastDaysTestCases;
+        testsChart.data.datasets[1].data = pastDaysTasks;
+        testsChart.update();
+        
+        // 计算测试结果分布
+        let passed = 0, failed = 0, pending = 0;
+        
+        // 模拟数据
+        passed = 18;
+        failed = 7;
+        pending = 25 - passed - failed;
+        
+        // 更新测试结果分布图表
+        resultsChart.data.datasets[0].data = [passed, failed, pending];
+        resultsChart.update();
+    }
+
+    function getStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'bg-secondary',
+            'preparing': 'bg-info',
+            'executing': 'bg-primary',
+            'completed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+
+    function getStatusText(status) {
+        const statusMap = {
+            'created': '已创建',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+</script>
+{% endblock %} 

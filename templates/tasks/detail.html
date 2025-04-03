@@ -1,0 +1,768 @@
+{% extends "base.html" %}
+
+{% block page_title %}任务详情{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" id="taskActionButtons">
+    <a href="/tasks" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    <button id="configBtn" class="btn btn-outline-primary" disabled>
+        <i class="bi bi-gear"></i> 配置任务
+    </button>
+    <button id="executeBtn" class="btn btn-success" disabled>
+        <i class="bi bi-play-fill"></i> 执行测试
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- 任务信息卡片 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card" id="taskInfoCard">
+                <div class="card-body text-center py-5">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">加载任务信息...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务状态和数据展示 -->
+    <div class="row mb-4">
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-hdd-rack me-2"></i>环境配置
+                </div>
+                <div class="card-body" id="configInfoContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载配置信息...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-speedometer2 me-2"></i>测试状态
+                </div>
+                <div class="card-body" id="statusContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载状态信息...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试用例列表 -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-check me-2"></i>测试用例列表</span>
+                    <div id="testCasesActions">
+                        <!-- 动态加载按钮 -->
+                    </div>
+                </div>
+                <div class="card-body p-0" id="testCasesContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载测试用例...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 任务ID
+    const taskId = '{{ task_id }}';
+    let taskData = null;
+    let testCases = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // 加载任务数据
+        loadTaskData();
+    });
+
+    function loadTaskData() {
+        // 获取任务信息
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                // 找到对应的任务
+                taskData = (data.tasks || []).find(task => task.task_id === taskId);
+                
+                if (taskData) {
+                    // 更新页面信息
+                    updateTaskInfo(taskData);
+                    updateConfigInfo(taskData);
+                    updateTaskStatus(taskData);
+                    loadTestCases(taskData.document_id);
+                    updateActionButtons(taskData);
+                } else {
+                    showError(document.getElementById('taskInfoCard'), `未找到ID为 ${taskId} 的任务`);
+                }
+            })
+            .catch(error => {
+                console.error('获取任务信息失败:', error);
+                showError(document.getElementById('taskInfoCard'), '加载任务信息失败，请刷新重试');
+            });
+    }
+
+    function updateTaskInfo(task) {
+        const infoCard = document.getElementById('taskInfoCard');
+        
+        // 计算天数差
+        const createDate = new Date(task.created_at);
+        const daysAgo = Math.floor((new Date() - createDate) / (1000 * 60 * 60 * 24));
+        
+        // 构建状态类和图标
+        const statusClass = getStatusBadgeClass(task.status);
+        const statusIcon = getStatusIcon(task.status);
+        
+        infoCard.innerHTML = `
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">任务详情</h5>
+                    <span class="badge ${statusClass}">
+                        <i class="${statusIcon} me-1"></i>
+                        ${getStatusText(task.status)}
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h2 class="mb-4" style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                            ${task.task_id}
+                        </h2>
+                        <div class="mb-3">
+                            <label class="text-muted mb-1">关联文档:</label>
+                            <div>
+                                ${task.document_id ? 
+                                    `<a href="/documents/${task.document_id}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-file-earmark-text me-1"></i>
+                                        ${task.document_id}
+                                    </a>` : 
+                                    '<span class="badge bg-secondary">无关联文档</span>'
+                                }
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="text-muted mb-1">创建时间:</label>
+                            <div>${formatDate(task.created_at)} (${daysAgo} 天前)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row">
+                            <div class="col-6 mb-4">
+                                <div class="stat-card py-3">
+                                    <div class="card-icon">
+                                        <i class="bi bi-list-check"></i>
+                                    </div>
+                                    <h6 class="card-title">测试用例</h6>
+                                    <div class="card-value">${task.test_cases_count || 0}</div>
+                                </div>
+                            </div>
+                            <div class="col-6 mb-4">
+                                <div class="stat-card py-3">
+                                    <div class="card-icon" style="background: var(--success-gradient); color: white;">
+                                        <i class="bi bi-check2-circle"></i>
+                                    </div>
+                                    <h6 class="card-title">通过率</h6>
+                                    <div class="card-value" style="background: var(--success-gradient);">
+                                        ${calculatePassRate(task)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function calculatePassRate(task) {
+        // 这里应该从后端获取数据，我们模拟一个值
+        return task.status === 'completed' ? '85' : '0';
+    }
+
+    function updateConfigInfo(task) {
+        const container = document.getElementById('configInfoContainer');
+        
+        const algorithmImage = task.algorithm_image || '未配置';
+        const datasetUrl = task.dataset_url || '未配置';
+        
+        container.innerHTML = `
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex flex-column">
+                    <span class="fw-bold mb-1">
+                        <i class="bi bi-box me-1"></i> 算法镜像
+                    </span>
+                    <div class="d-flex align-items-center ${task.algorithm_image ? 'text-success' : 'text-muted'}">
+                        ${task.algorithm_image ? 
+                            `<i class="bi bi-check-circle me-1"></i> ${algorithmImage}` :
+                            `<i class="bi bi-exclamation-circle me-1"></i> ${algorithmImage}`
+                        }
+                    </div>
+                </li>
+                <li class="list-group-item d-flex flex-column">
+                    <span class="fw-bold mb-1">
+                        <i class="bi bi-database me-1"></i> 数据集路径
+                    </span>
+                    <div class="d-flex align-items-center ${task.dataset_url ? 'text-success' : 'text-muted'}">
+                        ${task.dataset_url ? 
+                            `<i class="bi bi-check-circle me-1"></i> ${datasetUrl}` :
+                            `<i class="bi bi-exclamation-circle me-1"></i> ${datasetUrl}`
+                        }
+                    </div>
+                </li>
+                <li class="list-group-item d-flex flex-column">
+                    <span class="fw-bold mb-1">
+                        <i class="bi bi-cpu me-1"></i> 容器名称
+                    </span>
+                    <div class="d-flex align-items-center ${task.container_name ? 'text-success' : 'text-muted'}">
+                        ${task.container_name ? 
+                            `<i class="bi bi-check-circle me-1"></i> ${task.container_name}` :
+                            `<i class="bi bi-exclamation-circle me-1"></i> 未创建`
+                        }
+                    </div>
+                </li>
+            </ul>
+            <div class="mt-3 text-center">
+                <a href="/tasks/${task.task_id}/configure" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-gear me-1"></i> 修改配置
+                </a>
+            </div>
+        `;
+    }
+
+    function updateTaskStatus(task) {
+        const container = document.getElementById('statusContainer');
+        
+        // 根据任务状态显示不同的内容
+        if (['executing', 'preparing'].includes(task.status)) {
+            // 正在执行中，显示进度条
+            container.innerHTML = `
+                <div class="mb-4">
+                    <h6 class="mb-2">测试执行进度</h6>
+                    <div class="progress" style="height: 15px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                             style="width: 65%" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">65%</div>
+                    </div>
+                </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    测试正在执行中，请稍候...
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/execution/${task.task_id}/monitor" class="btn btn-primary">
+                        <i class="bi bi-graph-up me-1"></i> 查看实时进度
+                    </a>
+                </div>
+            `;
+        } else if (task.status === 'completed') {
+            // 已完成，显示结果统计
+            container.innerHTML = `
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="py-3">
+                            <h5 class="fw-bold mb-1" style="color: #43cea2">85%</h5>
+                            <span class="text-muted small">通过率</span>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="py-3">
+                            <h5 class="fw-bold mb-1" style="color: #4b6cb7">12 min</h5>
+                            <span class="text-muted small">耗时</span>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="py-3">
+                            <h5 class="fw-bold mb-1" style="color: #f85032">3 个</h5>
+                            <span class="text-muted small">失败用例</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <canvas id="resultsChart" height="140"></canvas>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/reports/${task.task_id}" class="btn btn-primary">
+                        <i class="bi bi-file-earmark-bar-graph me-1"></i> 查看完整报告
+                    </a>
+                </div>
+            `;
+            
+            // 初始化图表
+            setTimeout(() => {
+                const ctx = document.getElementById('resultsChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['通过', '失败', '跳过'],
+                        datasets: [{
+                            data: [17, 3, 0],
+                            backgroundColor: [
+                                'rgba(67, 206, 162, 0.8)',
+                                'rgba(248, 80, 50, 0.8)',
+                                'rgba(75, 108, 183, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(67, 206, 162, 1)',
+                                'rgba(248, 80, 50, 1)',
+                                'rgba(75, 108, 183, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        },
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%'
+                    }
+                });
+            }, 0);
+        } else if (task.status === 'failed') {
+            // 失败，显示错误信息
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    测试执行失败，请检查环境配置和测试数据
+                </div>
+                <div class="text-center mt-3">
+                    <button class="btn btn-outline-danger">
+                        <i class="bi bi-bug me-1"></i> 查看错误日志
+                    </button>
+                </div>
+            `;
+        } else {
+            // 未执行
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-circle me-2"></i>
+                    任务尚未执行，请先配置测试环境并执行测试
+                </div>
+                <div class="text-center mt-4">
+                    <div class="d-flex justify-content-center">
+                        <a href="/tasks/${task.task_id}/configure" class="btn btn-outline-primary me-2">
+                            <i class="bi bi-gear me-1"></i> 配置环境
+                        </a>
+                        <button id="startTestBtn" class="btn btn-success" ${!task.algorithm_image || !task.dataset_url ? 'disabled' : ''}>
+                            <i class="bi bi-play-fill me-1"></i> 开始测试
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // 绑定开始测试按钮点击事件
+            setTimeout(() => {
+                const startTestBtn = document.getElementById('startTestBtn');
+                if (startTestBtn && !(!task.algorithm_image || !task.dataset_url)) {
+                    startTestBtn.addEventListener('click', () => executeTask(task.task_id));
+                }
+            }, 0);
+        }
+    }
+
+    function loadTestCases(documentId) {
+        if (!documentId) {
+            const container = document.getElementById('testCasesContainer');
+            container.innerHTML = `
+                <div class="alert alert-info m-3">
+                    <i class="bi bi-info-circle me-2"></i> 
+                    该任务未关联文档，无法获取测试用例
+                </div>
+            `;
+            return;
+        }
+        
+        // 获取测试用例
+        fetch(`/api/testcases?document_id=${documentId}`)
+            .then(response => response.json())
+            .then(data => {
+                testCases = data.test_cases || [];
+                updateTestCasesView(testCases);
+                updateTestCasesActions(testCases);
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                showError(document.getElementById('testCasesContainer'), '加载测试用例失败，请刷新重试');
+            });
+    }
+
+    function updateTestCasesView(cases) {
+        const container = document.getElementById('testCasesContainer');
+        
+        if (cases.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info m-3">
+                    <i class="bi bi-info-circle me-2"></i> 
+                    暂无测试用例，请先生成或创建测试用例
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>测试目的</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cases.map(testCase => `
+                            <tr>
+                                <td>
+                                    <span class="badge bg-light text-dark">${testCase.id.substring(0, 8)}</span>
+                                </td>
+                                <td>${testCase.name}</td>
+                                <td>${truncateText(testCase.purpose, 50)}</td>
+                                <td>
+                                    <span class="badge ${getCaseStatusBadge(testCase.status)}">
+                                        ${getCaseStatusText(testCase.status)}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="/testcases/${testCase.id}" class="btn btn-outline-primary">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <button class="btn btn-outline-success" 
+                                            onclick="executeSingleTest('${testCase.id}')"
+                                            ${taskData && taskData.status === 'executing' ? 'disabled' : ''}>
+                                            <i class="bi bi-play-fill"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function updateTestCasesActions(cases) {
+        const container = document.getElementById('testCasesActions');
+        
+        if (cases.length === 0) {
+            container.innerHTML = `
+                <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-lg me-1"></i> 创建测试用例
+                </a>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="btn-group btn-group-sm">
+                <a href="/testcases?document_id=${taskData.document_id}" class="btn btn-outline-primary">
+                    <i class="bi bi-list-ul me-1"></i> 查看全部
+                </a>
+                <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-outline-success">
+                    <i class="bi bi-plus-lg me-1"></i> 添加用例
+                </a>
+                <button onclick="selectImages('${taskId}')" class="btn btn-outline-info" ${!taskData.dataset_url ? 'disabled' : ''}>
+                    <i class="bi bi-magic me-1"></i> 智能分配测试数据
+                </button>
+            </div>
+        `;
+    }
+
+    function updateActionButtons(task) {
+        const configBtn = document.getElementById('configBtn');
+        const executeBtn = document.getElementById('executeBtn');
+        
+        // 启用配置按钮
+        configBtn.disabled = false;
+        configBtn.href = `/tasks/${task.task_id}/configure`;
+        
+        // 判断执行按钮状态
+        if (task.status === 'executing' || task.status === 'preparing') {
+            executeBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 执行中...';
+            executeBtn.disabled = true;
+        } else if (task.test_cases_count > 0 && task.algorithm_image && task.dataset_url) {
+            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
+            executeBtn.disabled = false;
+            executeBtn.onclick = () => executeTask(task.task_id);
+        } else {
+            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
+            executeBtn.disabled = true;
+        }
+    }
+
+    function executeSingleTest(caseId) {
+        console.log(`执行单个测试: ${caseId}`);
+        
+        if (!confirm('确定要执行此测试用例吗？')) {
+            return;
+        }
+        
+        // 更新UI状态
+        const btn = document.querySelector(`button[onclick="executeSingleTest('${caseId}')"]`);
+        if (btn) {
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+            btn.disabled = true;
+        }
+        
+        // 发送API请求执行单个测试用例
+        fetch(`/api/testcases/${caseId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('测试用例执行已启动:', data);
+            
+            // 提示用户执行已开始
+            showNotification('success', `测试用例 ${caseId.substring(0, 8)} 执行已开始`);
+            
+            // 定时刷新页面，获取最新状态
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        })
+        .catch(error => {
+            console.error('执行测试用例失败:', error);
+            showNotification('danger', `执行测试用例失败: ${error.message}`);
+            
+            // 恢复按钮状态
+            if (btn) {
+                btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+                btn.disabled = false;
+            }
+        });
+    }
+
+    function executeTask(taskId) {
+        console.log(`执行任务: ${taskId}`);
+        
+        if (!confirm('确定要执行此测试任务吗？这可能需要几分钟时间。')) {
+            return;
+        }
+        
+        // 更新UI状态
+        const executeBtn = document.getElementById('executeBtn');
+        executeBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 执行中...';
+        executeBtn.disabled = true;
+        
+        // 发送API请求执行测试任务
+        fetch(`/api/tasks/${taskId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('测试执行任务已启动:', data);
+            
+            // 提示用户执行已开始
+            showNotification('success', `测试执行已开始，共 ${data.cases_total} 个测试用例`);
+            
+            // 定时刷新页面，获取最新状态
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        })
+        .catch(error => {
+            console.error('执行测试任务失败:', error);
+            showNotification('danger', `执行测试任务失败: ${error.message}`);
+            
+            // 恢复按钮状态
+            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
+            executeBtn.disabled = false;
+        });
+    }
+    
+    // 显示通知消息
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            <i class="bi ${type === 'success' ? 'bi-check-circle' : 'bi-exclamation-triangle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // 在页面顶部显示通知
+        const container = document.querySelector('.container');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // 自动关闭通知
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 5000);
+    }
+
+    function getStatusIcon(status) {
+        const iconMap = {
+            'created': 'bi bi-file-earmark-plus',
+            'preparing': 'bi bi-gear',
+            'executing': 'bi bi-hourglass-split',
+            'completed': 'bi bi-check-circle',
+            'failed': 'bi bi-exclamation-triangle'
+        };
+        return iconMap[status] || 'bi bi-question-circle';
+    }
+
+    function getCaseStatusBadge(status) {
+        const statusMap = {
+            'pending': 'bg-secondary',
+            'executing': 'bg-primary',
+            'passed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+
+    function getCaseStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    }
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function showError(container, message) {
+        container.innerHTML = `
+            <div class="alert alert-danger m-3">
+                <i class="bi bi-exclamation-triangle me-2"></i> ${message}
+            </div>
+        `;
+    }
+    
+    // 智能分配测试数据
+    function selectImages(taskId) {
+        if (!confirm('确定要智能分配测试数据吗？这将根据任务的数据集自动为测试用例分配合适的图片。')) {
+            return;
+        }
+        
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在分配测试数据，请稍候...');
+        
+        // 发送API请求
+        fetch(`/api/tasks/${taskId}/select-images`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('智能分配测试数据结果:', data);
+            
+            if (data.success) {
+                // 成功分配测试数据
+                let examplesHtml = '';
+                if (data.image_examples && data.image_examples.length > 0) {
+                    examplesHtml = '<ul class="mt-2 mb-0">' + 
+                        data.image_examples.map(([caseId, imagePath]) => 
+                            `<li><small>${caseId.substring(0, 8)}... => ${imagePath}</small></li>`
+                        ).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('success', `
+                    <div>
+                        <div><i class="bi bi-check-circle me-2"></i>成功为 ${data.updated_count} 个测试用例分配测试数据！</div>
+                        ${examplesHtml}
+                    </div>
+                `);
+                
+                // 2秒后刷新页面
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                // 分配失败
+                let errorsHtml = '';
+                if (data.errors && data.errors.length > 0) {
+                    errorsHtml = '<ul class="mt-2 mb-0">' + 
+                        data.errors.map(err => `<li><small>${err}</small></li>`).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('danger', `
+                    <div>
+                        <div><i class="bi bi-exclamation-triangle me-2"></i>分配测试数据失败：${data.message}</div>
+                        ${errorsHtml}
+                    </div>
+                `);
+            }
+        })
+        .catch(error => {
+            console.error('智能分配测试数据失败:', error);
+            showNotification('danger', `智能分配测试数据失败: ${error.message}`);
+        });
+    }
+</script>
+{% endblock %} 

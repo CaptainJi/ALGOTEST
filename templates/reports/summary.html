@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block page_title %}测试报告{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>测试报告列表
+                </div>
+                <div class="card-body">
+                    <div id="reportsContainer">
+                        <div class="text-center my-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">加载测试报告...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTasks();
+    });
+    
+    function loadTasks() {
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                renderReports(data.tasks || []);
+            })
+            .catch(error => {
+                console.error('获取任务列表失败:', error);
+                showError(document.getElementById('reportsContainer'), '加载报告列表失败，请刷新重试');
+            });
+    }
+    
+    function renderReports(tasks) {
+        const container = document.getElementById('reportsContainer');
+        
+        // 过滤已完成的任务作为报告
+        const completedTasks = tasks.filter(task => 
+            task.status === 'completed' && task.test_cases_count > 0
+        );
+        
+        if (completedTasks.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    暂无已完成的测试任务，无法生成测试报告
+                </div>
+                <div class="text-center">
+                    <a href="/tasks" class="btn btn-primary">
+                        <i class="bi bi-list-check"></i> 查看任务列表
+                    </a>
+                </div>
+            `;
+            return;
+        }
+        
+        // 为每个任务加载报告列表
+        Promise.all(completedTasks.map(task => 
+            fetch(`/api/reports/${task.task_id}/list`)
+                .then(response => response.json())
+                .then(data => ({
+                    task: task,
+                    reports: data.reports || []
+                }))
+        )).then(tasksWithReports => {
+            container.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>任务ID</th>
+                                <th>文档ID</th>
+                                <th>测试用例数</th>
+                                <th>报告文件</th>
+                                <th>生成时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tasksWithReports.map(({task, reports}) => `
+                                <tr>
+                                    <td>${task.task_id}</td>
+                                    <td>
+                                        ${task.document_id ? 
+                                            `<a href="/documents/${task.document_id}">${task.document_id.substring(0, 8)}</a>` : 
+                                            '-'
+                                        }
+                                    </td>
+                                    <td>${task.test_cases_count || 0}</td>
+                                    <td>
+                                        ${reports.length > 0 ? 
+                                            `<div class="small text-muted">
+                                                <i class="bi bi-folder me-1"></i>
+                                                ${reports[0].path}
+                                            </div>` : 
+                                            '<span class="badge bg-secondary">暂无报告</span>'
+                                        }
+                                    </td>
+                                    <td>
+                                        ${reports.length > 0 ? 
+                                            formatDate(reports[0].created_at) : 
+                                            '-'
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="/reports/${task.task_id}" class="btn btn-outline-primary">
+                                                <i class="bi bi-eye me-1"></i>查看
+                                            </a>
+                                            ${reports.length > 0 ? 
+                                                `<a href="/api/reports/download/${task.task_id}/${reports[0].filename}" 
+                                                    class="btn btn-outline-success">
+                                                    <i class="bi bi-download me-1"></i>下载
+                                                </a>` : 
+                                                ''
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        });
+    }
+
+    function formatDate(timestamp) {
+        if (!timestamp) return '-';
+        const date = new Date(timestamp * 1000);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function showError(container, message) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                ${message}
+            </div>
+        `;
+    }
+</script>
+{% endblock %} 

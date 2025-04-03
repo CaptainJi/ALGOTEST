@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block page_title %}{% if is_new %}创建测试用例{% else %}编辑测试用例{% endif %}{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    {% if is_new %}
+    <a href="/testcases{% if document_id %}?document_id={{ document_id }}{% endif %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    {% else %}
+    <a href="/testcases/{{ case_id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回详情
+    </a>
+    {% endif %}
+    <button type="submit" form="testCaseForm" class="btn btn-primary">
+        <i class="bi bi-save"></i> 保存
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        {% if is_new %}创建新测试用例{% else %}编辑测试用例{% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="testCaseForm" class="needs-validation" novalidate>
+                        {% if not is_new %}
+                        <input type="hidden" id="caseId" value="{{ case_id }}">
+                        {% endif %}
+                        
+                        {% if document_id and is_new %}
+                        <input type="hidden" id="documentId" value="{{ document_id }}">
+                        {% endif %}
+                        
+                        <div class="row g-3">
+                            <div class="col-md-12 mb-3">
+                                <label for="caseName" class="form-label">测试用例名称</label>
+                                <input type="text" class="form-control" id="caseName" placeholder="请输入测试用例名称" required>
+                                <div class="invalid-feedback">
+                                    请输入测试用例名称
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="casePurpose" class="form-label">测试目的</label>
+                                <textarea class="form-control" id="casePurpose" rows="2" placeholder="请输入测试目的"></textarea>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="caseSteps" class="form-label">测试步骤</label>
+                                <textarea class="form-control" id="caseSteps" rows="5" placeholder="请输入测试步骤，每行一个步骤" required></textarea>
+                                <div class="invalid-feedback">
+                                    请输入测试步骤
+                                </div>
+                                <div class="form-text">
+                                    每行输入一个步骤，系统会自动编号
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="caseExpectedResult" class="form-label">预期结果</label>
+                                <textarea class="form-control" id="caseExpectedResult" rows="3" placeholder="请输入预期结果" required></textarea>
+                                <div class="invalid-feedback">
+                                    请输入预期结果
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="caseValidation" class="form-label">验证方法</label>
+                                <textarea class="form-control" id="caseValidation" rows="2" placeholder="请输入验证方法"></textarea>
+                            </div>
+                            
+                            <div class="col-md-12 mb-3">
+                                <label for="caseTestData" class="form-label">测试图片文件名</label>
+                                <input type="text" class="form-control" id="caseTestData" placeholder="请输入测试图片文件名，例如：image.jpg">
+                                <div class="form-text">
+                                    指定测试用例使用的图片文件名，数据集中的图片文件名
+                                </div>
+                            </div>
+                            
+                            {% if is_new and not document_id %}
+                            <div class="col-md-12 mb-3">
+                                <label for="documentIdSelect" class="form-label">关联文档</label>
+                                <select class="form-select" id="documentIdSelect">
+                                    <option value="">-- 不关联文档 --</option>
+                                    <!-- 文档列表将通过JS动态加载 -->
+                                </select>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 网页加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        // 表单验证
+        const form = document.getElementById('testCaseForm');
+        
+        // 如果是编辑模式，加载测试用例数据
+        {% if not is_new %}
+        loadTestCaseData();
+        {% else %}
+        // 如果是创建模式且没有关联文档，加载文档列表
+        {% if not document_id %}
+        loadDocumentsList();
+        {% endif %}
+        {% endif %}
+        
+        // 提交表单
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            if (!form.checkValidity()) {
+                event.stopPropagation();
+                form.classList.add('was-validated');
+                return;
+            }
+            
+            if ({% if is_new %}true{% else %}false{% endif %}) {
+                createTestCase();
+            } else {
+                updateTestCase();
+            }
+        });
+    });
+    
+    function loadTestCaseData() {
+        const caseId = '{{ case_id }}';
+        
+        fetch(`/api/testcases/${caseId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // 填充表单
+                document.getElementById('caseName').value = data.name || '';
+                document.getElementById('casePurpose').value = data.purpose || '';
+                document.getElementById('caseSteps').value = data.steps || '';
+                document.getElementById('caseExpectedResult').value = data.expected_result || '';
+                document.getElementById('caseValidation').value = data.validation_method || '';
+                
+                // 获取测试用例所属的任务ID
+                fetch(`/api/testcases/${caseId}/task`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(taskData => {
+                        // 使用任务ID获取测试图片文件名
+                        const taskId = taskData.task_id;
+                        if (taskId) {
+                            return fetch(`/api/tasks/${taskId}/test-data`);
+                        } else {
+                            throw new Error('未找到对应的任务ID');
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(testDataResponse => {
+                        const testCases = testDataResponse.test_cases || [];
+                        const thisCase = testCases.find(tc => tc.case_id === caseId);
+                        if (thisCase && thisCase.test_data) {
+                            document.getElementById('caseTestData').value = thisCase.test_data;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取测试数据失败:', error);
+                    });
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                alert('加载测试用例数据失败，请刷新重试');
+            });
+    }
+    
+    function loadDocumentsList() {
+        const select = document.getElementById('documentIdSelect');
+        
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                const tasks = data.tasks || [];
+                // 过滤出有文档ID的任务
+                const documents = tasks.filter(task => task.document_id);
+                
+                if (documents.length === 0) {
+                    select.innerHTML = '<option value="">-- 没有可用文档 --</option>';
+                    return;
+                }
+                
+                // 添加文档选项
+                let options = '<option value="">-- 不关联文档 --</option>';
+                documents.forEach(doc => {
+                    options += `<option value="${doc.document_id}">${doc.document_id} (${doc.created_at ? formatDate(doc.created_at) : '未知时间'})</option>`;
+                });
+                
+                select.innerHTML = options;
+            })
+            .catch(error => {
+                console.error('获取文档列表失败:', error);
+                select.innerHTML = '<option value="">-- 加载失败 --</option>';
+            });
+    }
+    
+    function createTestCase() {
+        // 获取表单数据
+        const name = document.getElementById('caseName').value;
+        const purpose = document.getElementById('casePurpose').value;
+        const steps = document.getElementById('caseSteps').value;
+        const expectedResult = document.getElementById('caseExpectedResult').value;
+        const validationMethod = document.getElementById('caseValidation').value;
+        const testData = document.getElementById('caseTestData').value;
+        
+        // 获取文档ID
+        let documentId = '{{ document_id }}';
+        if (!documentId && document.getElementById('documentIdSelect')) {
+            documentId = document.getElementById('documentIdSelect').value;
+        }
+        
+        // 准备请求数据
+        const requestData = {
+            name: name,
+            purpose: purpose,
+            steps: steps,
+            expected_result: expectedResult,
+            validation_method: validationMethod
+        };
+        
+        if (documentId) {
+            requestData.document_id = documentId;
+        }
+        
+        // 发送创建请求
+        fetch('/api/testcases', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('测试用例创建成功:', data);
+            
+            // 如果提供了测试图片文件名，则更新测试数据
+            if (testData && documentId) {
+                // 准备更新测试数据的请求
+                const testDataRequest = {
+                    updates: [
+                        {
+                            case_id: data.id,
+                            test_data: testData
+                        }
+                    ]
+                };
+                
+                // 发送更新测试数据请求
+                return fetch(`/api/tasks/${documentId}/test-data`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testDataRequest)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        console.error('更新测试数据失败，但测试用例已创建');
+                    }
+                    return data; // 返回原始的测试用例数据
+                });
+            }
+            
+            return data;
+        })
+        .then(data => {
+            // 创建成功后跳转到详情页
+            if (documentId) {
+                window.location.href = `/testcases?document_id=${documentId}`;
+            } else {
+                window.location.href = '/testcases';
+            }
+        })
+        .catch(error => {
+            console.error('创建测试用例失败:', error);
+            alert('创建测试用例失败，请重试');
+        });
+    }
+    
+    function updateTestCase() {
+        const caseId = '{{ case_id }}';
+        
+        // 获取表单数据
+        const name = document.getElementById('caseName').value;
+        const purpose = document.getElementById('casePurpose').value;
+        const steps = document.getElementById('caseSteps').value;
+        const expectedResult = document.getElementById('caseExpectedResult').value;
+        const validationMethod = document.getElementById('caseValidation').value;
+        const testData = document.getElementById('caseTestData').value;
+        
+        // 准备请求数据
+        const requestData = {
+            name: name,
+            purpose: purpose,
+            steps: steps,
+            expected_result: expectedResult,
+            validation_method: validationMethod
+        };
+        
+        // 发送更新请求
+        fetch(`/api/testcases/${caseId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('测试用例更新成功:', data);
+            
+            // 如果提供了测试图片文件名，则更新测试数据
+            if (testData) {
+                // 获取测试用例的任务ID
+                return fetch(`/api/testcases/${caseId}/task`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(taskData => {
+                        const taskId = taskData.task_id;
+                        if (!taskId) {
+                            throw new Error('未找到对应的任务ID');
+                        }
+                        
+                        // 准备更新测试数据的请求
+                        const testDataRequest = {
+                            updates: [
+                                {
+                                    case_id: caseId,
+                                    test_data: testData
+                                }
+                            ]
+                        };
+                        
+                        // 使用正确的任务ID发送更新测试数据请求
+                        return fetch(`/api/tasks/${taskId}/test-data`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(testDataRequest)
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                console.error('更新测试数据失败，但测试用例已更新');
+                            }
+                            return data; // 返回原始的测试用例数据
+                        });
+                    });
+            }
+            
+            return data;
+        })
+        .then(data => {
+            // 更新成功后跳转到详情页
+            window.location.href = `/testcases/${caseId}`;
+        })
+        .catch(error => {
+            console.error('更新测试用例失败:', error);
+            alert('更新测试用例失败，请重试');
+        });
+    }
+    
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+</script>
+{% endblock %} 

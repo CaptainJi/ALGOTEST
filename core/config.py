@@ -6,9 +6,9 @@
 开发规划：使用pydantic-settings从环境变量和.env文件加载配置，提供统一的配置访问接口
 """
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Dict, Any, List
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, validation_alias="API_PORT")
     api_workers: int = Field(default=4, validation_alias="API_WORKERS")
     api_timeout: int = Field(default=60, validation_alias="API_TIMEOUT")
-    api_reload: bool = Field(default=False, validation_alias="API_RELOAD")
+    api_reload: bool = Field(default=True, validation_alias="API_RELOAD")
     
     # 数据库配置
     db_url: str = Field(default="sqlite:///algotest.db", validation_alias="DB_URL")

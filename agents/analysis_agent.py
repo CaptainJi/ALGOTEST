@@ -134,21 +134,93 @@ def generate_test_cases(state: AnalysisState) -> AnalysisState:
         if not pdf_content:
             raise ValueError("PDF内容为空")
         
+        standard_parameters = f"""
+        1.draw_roi_area
+            false 不画出roi框
+            true 区域被框正方下发
+
+        2.polygin
+            在roi内进行分割
+            在非roi没有分割
+
+        3.roi_color
+            颜色为框发生变动
+
+        4.roi_line_thickness
+            roi大小发生变动
+
+        5.roi_fill
+            true 用颜色填充整个roi
+            false 选择填充, 只画roi框
+
+        6.draw_result
+            true 画出目标框和目标文本
+            false 不画出目标框和目标文本
+
+        7.draw_confidence
+            false 不显示置信度
+            置信度小于预设值thresh, 不对应可视化, 并且红色
+            置信度大于预设值thresh, 进行可视化, 并且绿色
+
+        8.language
+            zh 中文字符集采用中文标注
+
+        9.target_rect_color
+            修改目标框颜色发生改变
+
+        10.object_rect_line_thickness
+            修改目标框大小发生改变
+
+        11.object_text_color
+            修改目标文本颜色发生改变
+
+        12.object_text_bg_color
+            修改目标文本背景颜色发生改变
+
+        13.object_text_size
+            修改目标文本大小发生改变
+
+        14.draw_warning_text
+            true 画出警告文本
+            false 不画出警告文本
+
+        15.warning_text_en
+            修改英文警告字符发生改变
+
+        16.warning_text_zh
+            修改中文警告字符发生改变
+
+        17.warning_text_size
+            修改警告文本大小发生改变
+
+        18.warning_text_color
+            修改警告文本颜色发生改变
+
+        19.warning_text_bg_color
+            修改警告文本背景颜色发生改变
+        
+        """
+        
         # 获取LLM配置
         llm_config = get_llm_config()
         
         # 构建提示词
         prompt = f"""
-        请根据以下算法需求文档，生成一系列全面的测试用例，以验证算法的功能和性能。
+        请根据以下算法需求文档和标准参数说明，生成一系列全面的测试用例，以验证算法的功能和性能。
         
         需求文档：
         {pdf_content}
+
+        标准参数说明：
+        {standard_parameters}
         
         请特别注意：
         1. 必须全面验证"算法报警逻辑"部分的正确性，确保算法能够按照文档描述的业务场景和逻辑正确工作
         2. 必须对"二、自定义配置参数 2、自定义参数说明"部分中的每个有编号的参数进行专门的测试，确保每个参数都能正确工作
         3. 每个"二、自定义配置参数 2、自定义参数说明"中的自定义参数至少需要一个专门的测试用例，测试其功能和边界条件
         4. 测试用例应该覆盖参数的默认值、边界值和特殊值情况
+        5. 测试用例应该包含所有标准参数的测试，共19个标准参数
+        6. 每个测试用例仅对应一条执行命令，不能对应多条执行命令
         
         生成的测试用例必须包含以下信息：
         1. 测试名称：简短描述测试内容，应当明确指出测试的参数或功能
@@ -181,6 +253,8 @@ def generate_test_cases(state: AnalysisState) -> AnalysisState:
         
         例如测试步骤可以这样描述：
         "设置参数 visual_object=false，然后运行算法检测图像"
+
+        预期结果可以根据需求文档中 三、输出json 中的内容来描述
         
         请确保测试用例全面覆盖以下内容：
         1. 算法报警逻辑的正确性验证
@@ -364,6 +438,7 @@ def save_to_database(state: AnalysisState) -> AnalysisState:
             "task_id": state["task_id"],
             "requirement_doc": state.get("pdf_content", ""),
             "algorithm_image": state["algorithm_image"],
+            "dataset_url": state.get("dataset_url"),
             "status": "created"
         }
         

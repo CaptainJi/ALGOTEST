@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block page_title %}文档详情{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <a href="/documents" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    <button id="analyzeBtn" class="btn btn-success">
+        <i class="bi bi-lightning"></i> 生成测试用例
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card" id="documentInfo">
+                <div class="card-body text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">加载文档信息...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>测试用例</span>
+                    <a href="/testcases?document_id={{ document_id }}" class="btn btn-sm btn-outline-primary">
+                        查看全部
+                    </a>
+                </div>
+                <div class="card-body" id="testCasesContainer">
+                    <div class="text-center my-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载测试用例...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认分析对话框 -->
+<div class="modal fade" id="analyzeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认分析文档</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>确定要分析该文档并生成测试用例吗？这可能需要几分钟时间。</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    注意：如果文档已有测试用例，此操作可能会创建额外的测试用例。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAnalyze">确认分析</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const documentId = '{{ document_id }}';
+    let documentData = null;
+    let analyzeModal = null;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // 初始化模态框
+        analyzeModal = new bootstrap.Modal(document.getElementById('analyzeModal'));
+        
+        // 加载文档信息
+        loadDocumentInfo();
+        
+        // 加载测试用例
+        loadTestCases();
+        
+        // 绑定分析按钮事件
+        document.getElementById('analyzeBtn').addEventListener('click', function() {
+            analyzeModal.show();
+        });
+        
+        // 绑定确认分析按钮事件
+        document.getElementById('confirmAnalyze').addEventListener('click', function() {
+            analyzeDocument();
+        });
+    });
+    
+    function loadDocumentInfo() {
+        // 通过API获取任务列表，根据document_id过滤
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                const tasks = data.tasks || [];
+                // 找到匹配的文档
+                documentData = tasks.find(task => task.document_id === documentId);
+                
+                if (documentData) {
+                    renderDocumentInfo(documentData);
+                    updateAnalyzeButton(documentData);
+                } else {
+                    showError(document.getElementById('documentInfo'), `未找到ID为 ${documentId} 的文档`);
+                }
+            })
+            .catch(error => {
+                console.error('获取文档信息失败:', error);
+                showError(document.getElementById('documentInfo'), '加载文档信息失败，请刷新重试');
+            });
+    }
+    
+    function renderDocumentInfo(doc) {
+        const infoContainer = document.getElementById('documentInfo');
+        
+        // 计算创建时间到现在的天数
+        const createDate = new Date(doc.created_at);
+        const daysAgo = Math.floor((new Date() - createDate) / (1000 * 60 * 60 * 24));
+        
+        infoContainer.innerHTML = `
+            <div class="card-header">
+                <h5 class="card-title mb-0">文档信息</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>文档ID:</span>
+                                <span class="text-muted">${doc.document_id}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>上传时间:</span>
+                                <span class="text-muted">${formatDate(doc.created_at)} (${daysAgo}天前)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>任务ID:</span>
+                                <span class="text-muted">${doc.task_id}</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>状态:</span>
+                                <span class="badge ${getStatusBadgeClass(doc.status)}">${getStatusText(doc.status)}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>测试用例数:</span>
+                                <span class="badge bg-primary">${doc.test_cases_count || 0}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>最后更新:</span>
+                                <span class="text-muted">${formatDate(doc.updated_at)}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function updateAnalyzeButton(doc) {
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        
+        // 如果状态为"analyzing"，则禁用按钮
+        if (doc.status === 'analyzing') {
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 分析中...';
+            return;
+        }
+        
+        // 如果已有测试用例，更改按钮文本
+        if (doc.test_cases_count > 0) {
+            analyzeBtn.innerHTML = '<i class="bi bi-lightning"></i> 重新生成测试用例';
+        }
+    }
+    
+    function loadTestCases() {
+        const container = document.getElementById('testCasesContainer');
+        
+        fetch(`/api/testcases?document_id=${documentId}`)
+            .then(response => response.json())
+            .then(data => {
+                const testCases = data.test_cases || [];
+                
+                if (testCases.length === 0) {
+                    container.innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            该文档暂无测试用例，点击"生成测试用例"按钮进行生成。
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 只显示前5个测试用例
+                const displayCases = testCases.slice(0, 5);
+                const totalCases = testCases.length;
+                
+                container.innerHTML = `
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名称</th>
+                                    <th>测试目的</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${displayCases.map(testCase => `
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-light text-dark">${testCase.id}</span>
+                                        </td>
+                                        <td>${testCase.name}</td>
+                                        <td>${truncateText(testCase.purpose, 50)}</td>
+                                        <td>
+                                            <span class="badge ${getCaseStatusBadge(testCase.status)}">
+                                                ${getCaseStatusText(testCase.status)}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="/testcases/${testCase.id}" class="btn btn-sm btn-outline-primary">详情</a>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${totalCases > 5 ? `
+                        <div class="text-center mt-3">
+                            <a href="/testcases?document_id=${documentId}" class="btn btn-sm btn-outline-secondary">
+                                查看全部 ${totalCases} 个测试用例
+                            </a>
+                        </div>
+                    ` : ''}
+                `;
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                showError(container, '加载测试用例失败，请刷新重试');
+            });
+    }
+    
+    function analyzeDocument() {
+        analyzeModal.hide();
+        
+        // 更新按钮状态
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        analyzeBtn.disabled = true;
+        analyzeBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 分析中...';
+        
+        // 显示加载指示器
+        const container = document.getElementById('testCasesContainer');
+        container.innerHTML = `
+            <div class="text-center my-4">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">分析中...</span>
+                </div>
+                <p class="mt-2">正在分析文档并生成测试用例，这可能需要几分钟时间...</p>
+                <div class="progress mt-3" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 100%" 
+                         aria-valuenow="100" aria-valuemin="0" aria-valuemax="100">
+                        处理中...
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 发送分析请求
+        fetch(`/api/documents/${documentId}/analyze`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            console.log('API响应状态:', response.status);
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.detail || `HTTP错误 ${response.status}`);
+                }).catch(err => {
+                    if (err instanceof SyntaxError) {
+                        throw new Error(`HTTP错误 ${response.status}`);
+                    }
+                    throw err;
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('分析完成:', data);
+            // 刷新页面信息
+            loadDocumentInfo();
+            
+            // 显示成功消息
+            container.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    文档分析成功，生成了 ${data.test_cases.length} 个测试用例
+                </div>
+            `;
+            
+            // 延迟显示测试用例列表
+            setTimeout(() => {
+                loadTestCases();
+                
+                // 恢复按钮状态
+                analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = '<i class="bi bi-lightning"></i> 重新生成测试用例';
+            }, 2000);
+        })
+        .catch(error => {
+            console.error('文档分析失败:', error);
+            // 恢复按钮状态
+            analyzeBtn.disabled = false;
+            analyzeBtn.innerHTML = '<i class="bi bi-lightning"></i> 生成测试用例';
+            
+            // 显示错误消息
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    文档分析失败: ${error.message}
+                </div>
+                <div class="text-center mt-3">
+                    <button class="btn btn-outline-primary" onclick="analyzeDocument()">
+                        <i class="bi bi-arrow-clockwise me-1"></i> 重试
+                    </button>
+                </div>
+            `;
+        });
+    }
+    
+    function getStatusText(status) {
+        const statusMap = {
+            'created': '已上传',
+            'analyzing': '分析中',
+            'analyzed': '已分析',
+            'failed': '分析失败',
+            'completed': '已完成',
+            'pending': '待处理',
+            'executing': '执行中'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function getStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'bg-secondary',
+            'analyzing': 'bg-info',
+            'analyzed': 'bg-success',
+            'failed': 'bg-danger',
+            'completed': 'bg-success',
+            'pending': 'bg-secondary',
+            'executing': 'bg-primary'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+    
+    function showError(container, message) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i> ${message}
+            </div>
+        `;
+    }
+    
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    function getCaseStatusBadge(status) {
+        const statusMap = {
+            'pending': 'bg-secondary',
+            'executing': 'bg-primary',
+            'passed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+    
+    function getCaseStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    }
+</script>
+{% endblock %} 

@@ -10,17 +10,14 @@ from core.config import get_settings, Settings, get_llm_config
 from core.logger import setup_logging, get_logger
 from core.database import (
     init_db, 
+    ensure_db,
     get_db, 
     TestTask, 
-    TestCase, 
-    TestResult, 
-    TestReport,
+    TestCase,
     create_test_task,
     get_test_task,
     update_test_task,
-    create_test_case,
-    create_test_result,
-    create_test_report
+    create_test_case
 )
 from core.utils import (
     generate_unique_id, 
@@ -48,17 +45,14 @@ __all__ = [
     
     # 数据库
     'init_db',
+    'ensure_db',
     'get_db',
     'TestTask',
     'TestCase',
-    'TestResult',
-    'TestReport',
     'create_test_task',
     'get_test_task',
     'update_test_task',
     'create_test_case',
-    'create_test_result',
-    'create_test_report',
     
     # 工具
     'generate_unique_id',

@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block page_title %}测试报告详情{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" id="reportActionButtons">
+    <a href="/reports" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    <button id="generateBtn" class="btn btn-primary">
+        <i class="bi bi-file-earmark-excel"></i> 生成Excel报告
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- 报告基本信息 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body" id="reportInfoCard">
+                    <div class="text-center py-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载报告信息...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试结果统计 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-graph-up me-2"></i>测试结果统计
+                </div>
+                <div class="card-body" id="statisticsCard">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载统计信息...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试用例详情 -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-list-check me-2"></i>测试用例详情
+                </div>
+                <div class="card-body p-0" id="testCasesCard">
+                    <div class="text-center py-4">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载测试用例...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 生成报告进度模态框 -->
+<div class="modal fade" id="generateProgressModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">生成报告中</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border mb-3" role="status">
+                    <span class="visually-hidden">生成中...</span>
+                </div>
+                <p class="mb-0">正在生成Excel报告，请稍候...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 任务ID
+    const taskId = '{{ task_id }}';
+    let taskData = null;
+    let analysisData = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // 加载报告数据
+        loadReportData();
+
+        // 绑定生成报告按钮事件
+        document.getElementById('generateBtn').addEventListener('click', generateReport);
+    });
+
+    function loadReportData() {
+        // 获取任务信息
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                // 找到对应的任务
+                taskData = (data.tasks || []).find(task => task.task_id === taskId);
+                
+                if (taskData) {
+                    // 更新页面信息
+                    updateReportInfo(taskData);
+                    // 获取分析结果
+                    return fetch(`/api/tasks/${taskId}/analysis`);
+                } else {
+                    throw new Error(`未找到ID为 ${taskId} 的任务`);
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                analysisData = data;
+                updateStatistics(data);
+                updateTestCases(data);
+            })
+            .catch(error => {
+                console.error('获取报告数据失败:', error);
+                showError(document.getElementById('reportInfoCard'), '加载报告数据失败，请刷新重试');
+            });
+    }
+
+    function updateReportInfo(task) {
+        const infoCard = document.getElementById('reportInfoCard');
+        
+        // 计算天数差
+        const createDate = new Date(task.created_at);
+        const daysAgo = Math.floor((new Date() - createDate) / (1000 * 60 * 60 * 24));
+        
+        infoCard.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h2 class="mb-4" style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                        ${task.task_id}
+                    </h2>
+                    <div class="mb-3">
+                        <label class="text-muted mb-1">关联文档:</label>
+                        <div>
+                            ${task.document_id ? 
+                                `<a href="/documents/${task.document_id}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-file-earmark-text me-1"></i>
+                                    ${task.document_id}
+                                </a>` : 
+                                '<span class="badge bg-secondary">无关联文档</span>'
+                            }
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="text-muted mb-1">创建时间:</label>
+                        <div>${formatDate(task.created_at)} (${daysAgo} 天前)</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-6 mb-4">
+                            <div class="stat-card py-3">
+                                <div class="card-icon">
+                                    <i class="bi bi-list-check"></i>
+                                </div>
+                                <h6 class="card-title">测试用例</h6>
+                                <div class="card-value">${task.test_cases_count || 0}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-4">
+                            <div class="stat-card py-3">
+                                <div class="card-icon" style="background: var(--success-gradient); color: white;">
+                                    <i class="bi bi-check2-circle"></i>
+                                </div>
+                                <h6 class="card-title">通过率</h6>
+                                <div class="card-value" style="background: var(--success-gradient);">
+                                    ${calculatePassRate(task)}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function updateStatistics(data) {
+        const container = document.getElementById('statisticsCard');
+        const summary = data.summary;
+        
+        container.innerHTML = `
+            <div class="row text-center">
+                <div class="col-3">
+                    <div class="py-3">
+                        <h3 class="fw-bold mb-1" style="color: var(--bs-primary)">${summary.total_cases}</h3>
+                        <span class="text-muted">总用例数</span>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="py-3">
+                        <h3 class="fw-bold mb-1" style="color: var(--bs-success)">${summary.passed_cases}</h3>
+                        <span class="text-muted">通过</span>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="py-3">
+                        <h3 class="fw-bold mb-1" style="color: var(--bs-danger)">${summary.failed_cases}</h3>
+                        <span class="text-muted">失败</span>
+                    </div>
+                </div>
+                <div class="col-3">
+                    <div class="py-3">
+                        <h3 class="fw-bold mb-1" style="color: var(--bs-warning)">${summary.pending_cases}</h3>
+                        <span class="text-muted">待执行</span>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <canvas id="resultsChart" height="200"></canvas>
+                </div>
+                <div class="col-md-6">
+                    <div class="alert ${summary.success_rate >= 80 ? 'alert-success' : 'alert-warning'}">
+                        <h4 class="alert-heading mb-2">测试结果分析</h4>
+                        <p class="mb-0">
+                            测试通过率: ${summary.success_rate}%<br>
+                            ${summary.success_rate >= 80 ? 
+                                '测试结果良好，大部分用例通过测试。' : 
+                                '测试通过率较低，建议检查失败用例并修复问题。'
+                            }
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 初始化图表
+        const ctx = document.getElementById('resultsChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['通过', '失败', '待执行'],
+                datasets: [{
+                    data: [
+                        summary.passed_cases,
+                        summary.failed_cases,
+                        summary.pending_cases
+                    ],
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.8)',  // success
+                        'rgba(220, 53, 69, 0.8)',  // danger
+                        'rgba(255, 193, 7, 0.8)'   // warning
+                    ],
+                    borderColor: [
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(220, 53, 69, 1)',
+                        'rgba(255, 193, 7, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+
+    function updateTestCases(data) {
+        const container = document.getElementById('testCasesCard');
+        const cases = data.analysis_results;
+        
+        if (!cases || cases.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info m-3">
+                    <i class="bi bi-info-circle me-2"></i>
+                    暂无测试用例数据
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>测试目的</th>
+                            <th>执行结果</th>
+                            <th>输出概要</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cases.map(testCase => `
+                            <tr>
+                                <td>
+                                    <span class="badge bg-light text-dark">${testCase.case_id.substring(0, 8)}</span>
+                                </td>
+                                <td>${testCase.name}</td>
+                                <td>${testCase.details['测试目的'] || '-'}</td>
+                                <td>
+                                    <span class="badge ${testCase.is_passed ? 'bg-success' : 'bg-danger'}">
+                                        ${testCase.is_passed ? '通过' : '失败'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted">${testCase.output_summary || '-'}</small>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function generateReport() {
+        // 显示进度模态框
+        const progressModal = new bootstrap.Modal(document.getElementById('generateProgressModal'));
+        progressModal.show();
+
+        // 调用生成报告API
+        fetch(`/api/tasks/${taskId}/report`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 隐藏进度模态框
+                progressModal.hide();
+                
+                // 获取报告文件名和路径
+                const reportPath = data.report_path;
+                const reportName = reportPath.split('/').pop();
+                
+                // 显示成功消息和报告路径
+                showNotification('success', `
+                    <div>
+                        <p class="mb-2">报告生成成功！</p>
+                        <small class="d-block text-muted">
+                            <i class="bi bi-file-earmark-spreadsheet me-1"></i>
+                            报告已保存至: ${reportPath}
+                        </small>
+                    </div>
+                `);
+                
+                // 构建下载URL
+                const downloadUrl = `/api/reports/download/${taskId}/${reportName}`;
+                
+                // 创建临时链接并触发下载
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = reportName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // 刷新报告列表（如果存在）
+                if (typeof loadReportsList === 'function') {
+                    loadReportsList();
+                }
+            } else {
+                throw new Error(data.error || '生成报告失败');
+            }
+        })
+        .catch(error => {
+            console.error('生成报告失败:', error);
+            progressModal.hide();
+            showNotification('danger', `生成报告失败: ${error.message}`);
+        });
+    }
+
+    function calculatePassRate(task) {
+        if (!analysisData) return 0;
+        return analysisData.summary.success_rate || 0;
+    }
+
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // 在页面顶部显示通知
+        const container = document.querySelector('.container');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // 自动关闭通知
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 8000);  // 延长显示时间到8秒
+        }, 8000);
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+</script>
+{% endblock %} 

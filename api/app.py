@@ -11,9 +11,9 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 
 from core.logger import get_logger
-from api.routes import router
 
 # 获取日志记录器
 log = get_logger("api")
@@ -21,7 +21,7 @@ log = get_logger("api")
 # 创建FastAPI应用
 app = FastAPI(
     title="ALGOTEST API",
-    description="大模型驱动的算法测试系统API",
+    description="大模型驱动的算法测试系统API，支持上传算法需求文档并自动生成测试用例",
     version="0.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -37,9 +37,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 添加路由
-app.include_router(router)
-
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 请求日志中间件
 @app.middleware("http")
@@ -70,35 +69,65 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """处理请求验证异常"""
-    log.warning(f"请求验证失败: {request.method} {request.url.path} - 错误: {str(exc)}")
+    error_details = exc.errors()
+    error_messages = []
+    for error in error_details:
+        loc = " -> ".join(str(x) for x in error["loc"])
+        msg = f"位置 {loc}: {error['msg']}"
+        error_messages.append(msg)
+    
+    error_summary = "\n".join(error_messages)
+    log.warning(f"请求验证失败: {request.method} {request.url.path}\n{error_summary}")
+    
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "message": "请求参数验证失败"}
+        content={
+            "detail": error_details,
+            "message": "请求参数验证失败",
+            "errors": error_messages
+        }
     )
 
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """处理HTTP异常"""
-    log.warning(f"HTTP异常: {request.method} {request.url.path} - 状态码: {exc.status_code}, 错误: {exc.detail}")
+    log.warning(
+        f"HTTP异常: {request.method} {request.url.path}\n"
+        f"状态码: {exc.status_code}\n"
+        f"错误信息: {exc.detail}\n"
+        f"请求头: {dict(request.headers)}"
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail}
+        content={
+            "detail": exc.detail,
+            "path": str(request.url.path),
+            "method": request.method
+        }
     )
 
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """处理通用异常"""
-    log.error(f"未处理的异常: {request.method} {request.url.path} - 异常: {str(exc)}")
+    import traceback
+    error_traceback = traceback.format_exc()
+    
+    log.error(
+        f"未处理的异常: {request.method} {request.url.path}\n"
+        f"异常类型: {type(exc).__name__}\n"
+        f"异常信息: {str(exc)}\n"
+        f"堆栈跟踪:\n{error_traceback}"
+    )
+    
     return JSONResponse(
         status_code=500,
-        content={"detail": "服务器内部错误", "message": str(exc)}
+        content={
+            "detail": "服务器内部错误",
+            "message": str(exc),
+            "type": type(exc).__name__,
+            "path": str(request.url.path),
+            "method": request.method
+        }
     )
-
-
-# 根路由
-@app.get("/")
-async def root():
-    """API根路由，重定向到API文档"""
-    return {"message": "欢迎使用ALGOTEST API", "docs": "/api/docs"}

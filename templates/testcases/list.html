@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+
+{% block page_title %}测试用例管理{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" id="testCasesActions">
+    {% if document_id %}
+    <a href="/documents/{{ document_id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回文档
+    </a>
+    {% endif %}
+    <a href="/testcases/create{% if document_id %}?document_id={{ document_id }}{% endif %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> 创建测试用例
+    </a>
+    <a href="/testcases/batch-data" class="btn btn-outline-primary">
+        <i class="bi bi-image me-1"></i> 批量设置测试数据
+    </a>
+    <button id="selectImagesBtn" class="btn btn-outline-info" style="display:none;">
+        <i class="bi bi-magic me-1"></i> 智能分配测试数据
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <div id="testCasesContainer">
+                        <div class="text-center my-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">加载测试用例...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const documentId = '{{ document_id or "" }}';
+    let taskId = null;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTestCases();
+        
+        // 添加智能分配测试数据按钮点击事件
+        document.getElementById('selectImagesBtn').addEventListener('click', function() {
+            if (taskId) {
+                selectImages(taskId);
+            } else {
+                showNotification('warning', '无法确定关联的任务ID，请先获取任务ID');
+                getTaskIdForDocument();
+            }
+        });
+    });
+    
+    function loadTestCases() {
+        const url = documentId ? `/api/testcases?document_id=${documentId}` : '/api/testcases';
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                renderTestCases(data.test_cases || []);
+                
+                // 如果有documentId，获取关联的任务ID
+                if (documentId && data.test_cases && data.test_cases.length > 0) {
+                    getTaskIdForCase(data.test_cases[0].id);
+                }
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                showError(document.getElementById('testCasesContainer'), '加载测试用例失败，请刷新重试');
+            });
+    }
+    
+    // 获取用例对应的任务ID
+    function getTaskIdForCase(caseId) {
+        fetch(`/api/testcases/${caseId}/task`)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.task_id) {
+                    taskId = data.task_id;
+                    // 显示智能分配按钮
+                    document.getElementById('selectImagesBtn').style.display = 'inline-block';
+                }
+            })
+            .catch(error => {
+                console.error('获取任务ID失败:', error);
+            });
+    }
+    
+    // 获取文档对应的任务ID
+    function getTaskIdForDocument() {
+        if (!documentId) {
+            showNotification('warning', '无法获取关联的任务ID，未指定文档ID');
+            return;
+        }
+        
+        fetch(`/api/tasks?document_id=${documentId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.tasks && data.tasks.length > 0) {
+                    taskId = data.tasks[0].task_id;
+                    showNotification('success', `已获取任务ID: ${taskId}`);
+                    document.getElementById('selectImagesBtn').style.display = 'inline-block';
+                } else {
+                    showNotification('warning', '未找到与文档关联的任务');
+                }
+            })
+            .catch(error => {
+                console.error('获取任务ID失败:', error);
+                showNotification('danger', `获取任务ID失败: ${error.message}`);
+            });
+    }
+    
+    // 智能分配测试数据
+    function selectImages(taskId) {
+        if (!confirm('确定要智能分配测试数据吗？这将根据任务的数据集自动为测试用例分配合适的图片。')) {
+            return;
+        }
+        
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在分配测试数据，请稍候...');
+        
+        // 发送API请求
+        fetch(`/api/tasks/${taskId}/select-images`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('智能分配测试数据结果:', data);
+            
+            if (data.success) {
+                // 成功分配测试数据
+                let examplesHtml = '';
+                if (data.image_examples && data.image_examples.length > 0) {
+                    examplesHtml = '<ul class="mt-2 mb-0">' + 
+                        data.image_examples.map(([caseId, imagePath]) => 
+                            `<li><small>${caseId.substring(0, 8)}... => ${imagePath}</small></li>`
+                        ).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('success', `
+                    <div>
+                        <div><i class="bi bi-check-circle me-2"></i>成功为 ${data.updated_count} 个测试用例分配测试数据！</div>
+                        ${examplesHtml}
+                    </div>
+                `);
+                
+                // 2秒后刷新页面
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                // 分配失败
+                let errorsHtml = '';
+                if (data.errors && data.errors.length > 0) {
+                    errorsHtml = '<ul class="mt-2 mb-0">' + 
+                        data.errors.map(err => `<li><small>${err}</small></li>`).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('danger', `
+                    <div>
+                        <div><i class="bi bi-exclamation-triangle me-2"></i>分配测试数据失败：${data.message}</div>
+                        ${errorsHtml}
+                    </div>
+                `);
+            }
+        })
+        .catch(error => {
+            console.error('智能分配测试数据失败:', error);
+            showNotification('danger', `智能分配测试数据失败: ${error.message}`);
+        });
+    }
+    
+    function renderTestCases(testCases) {
+        const container = document.getElementById('testCasesContainer');
+        
+        if (testCases.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>没有测试用例，可点击"创建测试用例"按钮添加。
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">ID</th>
+                            <th style="width: 20%;">名称</th>
+                            <th style="width: 30%;">测试目的</th>
+                            <th style="width: 15%;">状态</th>
+                            <th style="width: 15%;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${testCases.map(testCase => `
+                            <tr>
+                                <td>
+                                    <span class="badge bg-light text-dark">${testCase.id}</span>
+                                </td>
+                                <td>${testCase.name}</td>
+                                <td>${truncateText(testCase.purpose, 50)}</td>
+                                <td>
+                                    <span class="badge ${getCaseStatusBadge(testCase.status)}">
+                                        ${getCaseStatusText(testCase.status)}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="/testcases/${testCase.id}" class="btn btn-outline-primary">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="/testcases/${testCase.id}/edit" class="btn btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    function getCaseStatusBadge(status) {
+        const statusMap = {
+            'pending': 'bg-secondary',
+            'executing': 'bg-primary',
+            'passed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+    
+    function getCaseStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    }
+    
+    // 显示通知消息
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // 在页面顶部显示通知
+        const container = document.querySelector('.container');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // 自动关闭通知
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 5000);
+    }
+    
+    // 显示错误消息
+    function showError(container, message) {
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i> ${message}
+            </div>
+        `;
+    }
+</script>
+{% endblock %} 

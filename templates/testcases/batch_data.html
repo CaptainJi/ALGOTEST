@@ -1,0 +1,665 @@
+{% extends "base.html" %}
+
+{% block page_title %}批量设置测试数据{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <a href="/testcases" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+    </a>
+    <button id="setDataBtn" class="btn btn-primary" disabled>
+        <i class="bi bi-pencil-square"></i> 设置测试数据
+    </button>
+    <button id="selectImagesBtn" class="btn btn-outline-info" disabled>
+        <i class="bi bi-magic"></i> 智能分配测试数据
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- 选择数据路径 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-folder2-open me-2"></i>选择测试数据路径
+                </div>
+                <div class="card-body">
+                    <form id="dataPathForm">
+                        <div class="mb-3">
+                            <label for="dataPath" class="form-label">测试数据路径</label>
+                            <input type="text" class="form-control" id="dataPath" 
+                                   placeholder="/data/image.jpg 或 /data/*.jpg" required>
+                            <div class="form-text text-muted">
+                                输入测试图片路径，可以是单个图片或使用通配符的多个图片路径
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务列表 -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-task me-2"></i>选择任务</span>
+                    <div>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="taskSearchInput" placeholder="搜索任务...">
+                            <button class="btn btn-outline-secondary" type="button" id="taskSearchBtn">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="tasksContainer">
+                        <div class="text-center py-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">加载任务列表...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试用例列表 -->
+    <div class="row" id="testCasesSection" style="display: none;">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-check me-2"></i>选择测试用例</span>
+                    <div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="selectAllCases">
+                            <label class="form-check-label" for="selectAllCases">全选</label>
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="caseSearchInput" placeholder="搜索用例...">
+                            <button class="btn btn-outline-secondary" type="button" id="caseSearchBtn">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="testCasesContainer">
+                        <div class="text-center py-4">
+                            <p>请先选择任务</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 设置数据确认模态框 -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认设置测试数据</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>您将为 <span id="selectedCasesCount" class="fw-bold">0</span> 个测试用例设置以下测试数据路径:</p>
+                <div class="alert alert-info" id="previewDataPath"></div>
+                <p>确认要继续吗？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmSetDataBtn">确认设置</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 存储所有任务数据
+    let tasksData = [];
+    // 当前选中的任务
+    let selectedTaskId = null;
+    // 选中的测试用例ID列表
+    let selectedCaseIds = [];
+
+    // 页面加载完成
+    document.addEventListener('DOMContentLoaded', function() {
+        // 加载任务列表
+        loadTasks();
+
+        // 搜索任务
+        document.getElementById('taskSearchBtn').addEventListener('click', searchTasks);
+        document.getElementById('taskSearchInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') searchTasks();
+        });
+
+        // 搜索测试用例
+        document.getElementById('caseSearchBtn').addEventListener('click', searchTestCases);
+        document.getElementById('caseSearchInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') searchTestCases();
+        });
+
+        // 全选测试用例
+        document.getElementById('selectAllCases').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('#testCasesContainer input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+                toggleCaseSelection(cb.value, cb.checked);
+            });
+            updateSetDataButton();
+        });
+
+        // 设置数据按钮
+        document.getElementById('setDataBtn').addEventListener('click', function() {
+            // 检查数据路径
+            const dataPath = document.getElementById('dataPath').value.trim();
+            if (!dataPath) {
+                showNotification('warning', '请输入测试数据路径');
+                return;
+            }
+
+            // 检查是否选择了测试用例
+            if (selectedCaseIds.length === 0) {
+                showNotification('warning', '请至少选择一个测试用例');
+                return;
+            }
+
+            // 更新确认对话框
+            document.getElementById('selectedCasesCount').textContent = selectedCaseIds.length;
+            document.getElementById('previewDataPath').textContent = dataPath;
+
+            // 显示确认对话框
+            const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            confirmModal.show();
+        });
+
+        // 确认设置数据
+        document.getElementById('confirmSetDataBtn').addEventListener('click', setTestData);
+        
+        // 智能分配测试数据按钮
+        document.getElementById('selectImagesBtn').addEventListener('click', function() {
+            if (!selectedTaskId) {
+                showNotification('warning', '请先选择一个任务');
+                return;
+            }
+            
+            // 调用智能分配功能
+            selectImages(selectedTaskId);
+        });
+    });
+
+    // 加载所有任务
+    function loadTasks() {
+        fetch('/api/testcases/batch-data')
+            .then(response => response.json())
+            .then(data => {
+                tasksData = data.tasks;
+                renderTasks(tasksData);
+            })
+            .catch(error => {
+                console.error('获取任务列表失败:', error);
+                showNotification('danger', `获取任务列表失败: ${error.message}`);
+            });
+    }
+
+    // 渲染任务列表
+    function renderTasks(tasks) {
+        const container = document.getElementById('tasksContainer');
+        
+        if (!tasks || tasks.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info m-3">
+                    <i class="bi bi-info-circle me-2"></i>
+                    暂无任务数据
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="list-group list-group-flush">
+                ${tasks.map(task => `
+                    <a href="#" class="list-group-item list-group-item-action task-item" data-task-id="${task.task_id}">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">${task.task_id}</h6>
+                            <small class="text-muted">${formatDate(task.created_at)}</small>
+                        </div>
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <div>
+                                <small class="text-muted">
+                                    <i class="bi bi-box me-1"></i> ${task.algorithm_image || '未设置镜像'}
+                                </small>
+                                <br>
+                                <small class="text-muted">
+                                    <i class="bi bi-database me-1"></i> ${task.dataset_url || '未设置数据集'}
+                                </small>
+                            </div>
+                            <span class="badge bg-${getStatusBadgeClass(task.status)}">
+                                ${getStatusText(task.status)}
+                            </span>
+                        </div>
+                        <div class="mt-2">
+                            <span class="badge bg-primary rounded-pill">${task.test_cases_count} 个测试用例</span>
+                        </div>
+                    </a>
+                `).join('')}
+            </div>
+        `;
+        
+        // 绑定任务点击事件
+        document.querySelectorAll('.task-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // 移除其他任务的选中状态
+                document.querySelectorAll('.task-item').forEach(i => {
+                    i.classList.remove('active');
+                });
+                
+                // 添加当前任务的选中状态
+                this.classList.add('active');
+                
+                // 保存选中的任务ID
+                selectedTaskId = this.dataset.taskId;
+                
+                // 加载该任务的测试用例
+                const task = tasksData.find(t => t.task_id === selectedTaskId);
+                if (task) {
+                    renderTestCases(task.test_cases);
+                    document.getElementById('testCasesSection').style.display = 'block';
+                    
+                    // 启用或禁用智能分配按钮
+                    const selectImagesBtn = document.getElementById('selectImagesBtn');
+                    selectImagesBtn.disabled = !task.dataset_url;
+                    
+                    if (!task.dataset_url) {
+                        selectImagesBtn.title = "该任务未设置数据集URL，无法使用智能分配功能";
+                    } else {
+                        selectImagesBtn.title = "智能分配测试数据";
+                    }
+                }
+            });
+        });
+    }
+
+    // 渲染测试用例列表
+    function renderTestCases(cases) {
+        const container = document.getElementById('testCasesContainer');
+        
+        if (!cases || cases.length === 0) {
+            container.innerHTML = `
+                <div class="alert alert-info m-3">
+                    <i class="bi bi-info-circle me-2"></i>
+                    暂无测试用例数据
+                </div>
+            `;
+            return;
+        }
+        
+        // 清空之前选择的测试用例
+        selectedCaseIds = [];
+        updateSetDataButton();
+        
+        container.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th width="40px"><i class="bi bi-check-square"></i></th>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>测试目的</th>
+                            <th>当前数据</th>
+                            <th>状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cases.map(testCase => `
+                            <tr>
+                                <td>
+                                    <div class="form-check">
+                                        <input class="form-check-input case-checkbox" type="checkbox" 
+                                               value="${testCase.case_id}" 
+                                               id="case-${testCase.case_id}">
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark">${testCase.case_id.substring(0, 8)}</span>
+                                </td>
+                                <td>${testCase.name}</td>
+                                <td>${testCase.purpose || '-'}</td>
+                                <td>
+                                    <small class="text-muted">
+                                        ${testCase.test_data || '未设置'}
+                                    </small>
+                                </td>
+                                <td>
+                                    <span class="badge ${getCaseStatusBadge(testCase.status)}">
+                                        ${getCaseStatusText(testCase.status)}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        // 绑定测试用例勾选事件
+        document.querySelectorAll('.case-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                toggleCaseSelection(this.value, this.checked);
+                updateSetDataButton();
+            });
+        });
+        
+        // 清空全选复选框
+        document.getElementById('selectAllCases').checked = false;
+    }
+
+    // 切换测试用例选择状态
+    function toggleCaseSelection(caseId, isSelected) {
+        if (isSelected) {
+            if (!selectedCaseIds.includes(caseId)) {
+                selectedCaseIds.push(caseId);
+            }
+        } else {
+            selectedCaseIds = selectedCaseIds.filter(id => id !== caseId);
+        }
+    }
+
+    // 更新设置数据按钮状态
+    function updateSetDataButton() {
+        const setDataBtn = document.getElementById('setDataBtn');
+        setDataBtn.disabled = selectedCaseIds.length === 0;
+    }
+
+    // 搜索任务
+    function searchTasks() {
+        const keyword = document.getElementById('taskSearchInput').value.trim().toLowerCase();
+        if (!keyword) {
+            renderTasks(tasksData);
+            return;
+        }
+        
+        const filteredTasks = tasksData.filter(task => 
+            task.task_id.toLowerCase().includes(keyword) || 
+            (task.algorithm_image && task.algorithm_image.toLowerCase().includes(keyword)) ||
+            (task.dataset_url && task.dataset_url.toLowerCase().includes(keyword))
+        );
+        
+        renderTasks(filteredTasks);
+    }
+
+    // 搜索测试用例
+    function searchTestCases() {
+        if (!selectedTaskId) return;
+        
+        const keyword = document.getElementById('caseSearchInput').value.trim().toLowerCase();
+        const task = tasksData.find(t => t.task_id === selectedTaskId);
+        
+        if (!task) return;
+        
+        if (!keyword) {
+            renderTestCases(task.test_cases);
+            return;
+        }
+        
+        const filteredCases = task.test_cases.filter(testCase => 
+            testCase.case_id.toLowerCase().includes(keyword) || 
+            testCase.name.toLowerCase().includes(keyword) ||
+            (testCase.purpose && testCase.purpose.toLowerCase().includes(keyword))
+        );
+        
+        renderTestCases(filteredCases);
+    }
+
+    // 设置测试数据
+    function setTestData() {
+        // 获取数据路径
+        const dataPath = document.getElementById('dataPath').value.trim();
+        
+        // 关闭模态框
+        const confirmModal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
+        confirmModal.hide();
+        
+        // 显示加载提示
+        showNotification('info', `正在为 ${selectedCaseIds.length} 个测试用例设置数据...`);
+        
+        // 调用API
+        fetch('/api/testcases/batch-set-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                case_ids: selectedCaseIds,
+                test_data: dataPath
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            showNotification('success', data.message);
+            
+            // 重新加载任务列表，刷新数据
+            loadTasks();
+            
+            // 清空选择
+            selectedCaseIds = [];
+            updateSetDataButton();
+        })
+        .catch(error => {
+            console.error('设置测试数据失败:', error);
+            showNotification('danger', `设置测试数据失败: ${error.message}`);
+        });
+    }
+
+    // 获取任务状态对应的 Bootstrap 样式类
+    function getStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'secondary',
+            'preparing': 'info',
+            'executing': 'primary',
+            'completed': 'success',
+            'failed': 'danger'
+        };
+        return statusMap[status] || 'secondary';
+    }
+
+    // 获取任务状态文本
+    function getStatusText(status) {
+        const statusMap = {
+            'created': '已创建',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+
+    // 获取测试用例状态对应的 Bootstrap 样式类
+    function getCaseStatusBadge(status) {
+        const statusMap = {
+            'pending': 'bg-secondary',
+            'executing': 'bg-primary',
+            'passed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+
+    // 获取测试用例状态文本
+    function getCaseStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+
+    // 显示通知消息
+    function showNotification(type, message) {
+        const alertId = 'notification-' + new Date().getTime();
+        const alertHtml = `
+            <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert">
+                <i class="bi ${getNotificationIcon(type)} me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        // 在页面顶部添加通知
+        const container = document.querySelector('.container');
+        container.insertAdjacentHTML('afterbegin', alertHtml);
+        
+        // 5秒后自动关闭
+        setTimeout(() => {
+            const alert = document.getElementById(alertId);
+            if (alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }
+        }, 5000);
+    }
+    
+    // 获取通知图标
+    function getNotificationIcon(type) {
+        const iconMap = {
+            'success': 'bi-check-circle',
+            'info': 'bi-info-circle',
+            'warning': 'bi-exclamation-triangle',
+            'danger': 'bi-x-circle'
+        };
+        return iconMap[type] || 'bi-bell';
+    }
+    
+    // 智能分配测试数据
+    function selectImages(taskId) {
+        if (!confirm('确定要智能分配测试数据吗？这将根据任务的数据集自动为所有测试用例分配合适的图片。')) {
+            return;
+        }
+        
+        // 禁用按钮并显示加载状态
+        const btn = document.getElementById('selectImagesBtn');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 处理中...';
+        
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在分配测试数据，请稍候...');
+        
+        // 发送API请求
+        fetch(`/api/tasks/${taskId}/select-images`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('智能分配测试数据结果:', data);
+            
+            // 恢复按钮状态
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            
+            if (data.success) {
+                // 成功分配测试数据
+                let examplesHtml = '';
+                if (data.image_examples && data.image_examples.length > 0) {
+                    examplesHtml = '<ul class="mt-2 mb-0">' + 
+                        data.image_examples.map(([caseId, imagePath]) => 
+                            `<li><small>${caseId.substring(0, 8)}... => ${imagePath}</small></li>`
+                        ).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('success', `
+                    <div>
+                        <div><strong>智能分配成功!</strong> 成功为 ${data.updated_count} 个测试用例分配测试数据</div>
+                        ${examplesHtml}
+                    </div>
+                `);
+                
+                // 刷新任务的测试用例列表
+                if (selectedTaskId === taskId) {
+                    // 重新加载当前任务下的测试用例
+                    const task = tasksData.find(t => t.task_id === taskId);
+                    if (task) {
+                        // 重新从API获取测试用例
+                        fetch(`/api/testcases?task_id=${taskId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                // 更新缓存的测试用例数据
+                                const taskIndex = tasksData.findIndex(t => t.task_id === taskId);
+                                if (taskIndex !== -1) {
+                                    tasksData[taskIndex].test_cases = data.test_cases || [];
+                                    renderTestCases(tasksData[taskIndex].test_cases);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('获取更新后的测试用例失败:', error);
+                            });
+                    }
+                }
+            } else {
+                // 分配失败
+                let errorsHtml = '';
+                if (data.errors && data.errors.length > 0) {
+                    errorsHtml = '<ul class="mt-2 mb-0">' + 
+                        data.errors.map(err => `<li><small>${err}</small></li>`).join('') + 
+                    '</ul>';
+                }
+                
+                showNotification('danger', `
+                    <div>
+                        <div><strong>分配失败!</strong> ${data.message}</div>
+                        ${errorsHtml}
+                    </div>
+                `);
+            }
+        })
+        .catch(error => {
+            console.error('智能分配测试数据失败:', error);
+            showNotification('danger', `智能分配测试数据失败: ${error.message}`);
+            
+            // 恢复按钮状态
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+    }
+
+    // 格式化日期
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+</script>
+{% endblock %} 

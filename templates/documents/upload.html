@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block page_title %}上传文档{% endblock %}
+
+{% block page_actions %}
+<a href="/documents" class="btn btn-outline-secondary">
+    返回文档列表
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">上传算法需求文档</h5>
+                    <p class="card-text">
+                        请上传PDF格式的算法需求文档，系统将自动分析并生成测试用例。
+                    </p>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 支持的格式：PDF
+                    </div>
+                    
+                    <form id="uploadForm" method="post" enctype="multipart/form-data" class="mt-4">
+                        <div class="mb-3">
+                            <label for="fileInput" class="form-label">选择文件</label>
+                            <input class="form-control" type="file" id="fileInput" name="file" accept="application/pdf">
+                            <div class="form-text">文件大小不超过10MB</div>
+                        </div>
+                        
+                        <div id="uploadProgress" class="progress mb-3 d-none">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" id="uploadButton">
+                                上传文档
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadButton = document.getElementById('uploadButton');
+        const progressBar = document.querySelector('#uploadProgress .progress-bar');
+        const progressContainer = document.getElementById('uploadProgress');
+        
+        uploadForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('请选择要上传的文件');
+                return;
+            }
+            
+            if (file.size > 10 * 1024 * 1024) { // 10MB
+                alert('文件大小不能超过10MB');
+                return;
+            }
+            
+            // 显示进度条
+            progressContainer.classList.remove('d-none');
+            uploadButton.disabled = true;
+            uploadButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 上传中...';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            });
+            
+            xhr.addEventListener('load', function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const response = JSON.parse(xhr.responseText);
+                    // 上传成功，跳转到文档详情页
+                    window.location.href = `/documents/${response.document_id}`;
+                } else {
+                    let errorMsg = '上传失败';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.detail || '上传失败';
+                    } catch (e) {
+                        console.error('解析错误响应失败', e);
+                    }
+                    
+                    alert(`文档上传失败: ${errorMsg}`);
+                    resetForm();
+                }
+            });
+            
+            xhr.addEventListener('error', function() {
+                alert('网络错误，上传失败');
+                resetForm();
+            });
+            
+            xhr.open('POST', '/api/documents', true);
+            xhr.send(formData);
+        });
+        
+        function resetForm() {
+            progressContainer.classList.add('d-none');
+            uploadButton.disabled = false;
+            uploadButton.innerHTML = '上传文档';
+            progressBar.style.width = '0%';
+        }
+    });
+</script>
+{% endblock %} 
