@@ -340,7 +340,7 @@ async def batch_set_test_data(
     """
     批量设置测试用例的测试数据
     
-    - **request**: 包含测试用例ID列表和测试数据路径
+    - **request**: 包含测试用例ID列表和测试数据路径的请求
     
     返回更新结果
     """
@@ -352,15 +352,36 @@ async def batch_set_test_data(
         
         if not cases:
             raise HTTPException(status_code=404, detail="未找到指定的测试用例")
+            
+        found_case_ids = {case.case_id for case in cases}
+        missing_case_ids = set(request.case_ids) - found_case_ids
+        
+        if missing_case_ids:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"以下测试用例ID不存在: {', '.join(missing_case_ids)}"
+            )
+        
+        # 验证测试数据路径
+        if not request.test_data:
+            raise HTTPException(
+                status_code=400,
+                detail="测试数据路径不能为空"
+            )
         
         # 更新测试数据
+        updated_count = 0
         for case in cases:
             case.test_data = request.test_data
+            updated_count += 1
         
         # 提交更新
         db.commit()
         
-        return MessageResponse(message=f"成功更新{len(cases)}个测试用例的测试数据")
+        return MessageResponse(
+            message=f"成功更新{updated_count}个测试用例的测试数据",
+            success=True
+        )
         
     except HTTPException:
         raise
@@ -1135,12 +1156,25 @@ async def execute_task_tests(
         # 检查所有测试用例是否都设置了测试数据
         with get_db() as db:
             cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
-            missing_data_cases = [case.case_id for case in cases if not case.test_data]
+            missing_data_cases = []
+            invalid_data_cases = []
+            
+            for case in cases:
+                if not case.test_data:
+                    missing_data_cases.append(case.case_id)
+                elif not os.path.exists(case.test_data):
+                    invalid_data_cases.append(case.case_id)
+            
+            error_messages = []
             if missing_data_cases:
-                log.error(f"以下测试用例未设置测试数据: {missing_data_cases}")
+                error_messages.append(f"以下测试用例未设置测试数据: {', '.join(missing_data_cases)}")
+            if invalid_data_cases:
+                error_messages.append(f"以下测试用例的测试数据路径无效: {', '.join(invalid_data_cases)}")
+            
+            if error_messages:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"以下测试用例未设置测试数据，请先设置后再执行测试: {', '.join(missing_data_cases)}"
+                    detail="\n".join(error_messages)
                 )
         
         # 初始化状态
