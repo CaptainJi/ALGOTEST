@@ -1783,3 +1783,27 @@ async def release_task_docker(
             task_id=task_id,
             error=str(e)
         )
+
+# 7.1 获取测试用例的任务ID
+@router.get("/testcases/{case_id}/task", response_model=Dict[str, str])
+async def get_testcase_task(
+    case_id: str = Path(..., description="测试用例ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取测试用例所属的任务ID
+    
+    - **case_id**: 测试用例ID
+    
+    返回包含任务ID的字典
+    """
+    log.info(f"获取测试用例的任务ID: {case_id}")
+    
+    # 查询数据库
+    case = db.query(DBTestCase).filter(DBTestCase.case_id == case_id).first()
+    if not case:
+        log.error(f"测试用例不存在: {case_id}")
+        raise HTTPException(status_code=404, detail=f"测试用例不存在: {case_id}")
+    
+    log.info(f"查询到测试用例对应的任务ID: {case.task_id}")
+    return {"task_id": case.task_id}

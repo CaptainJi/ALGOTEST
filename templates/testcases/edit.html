@@ -156,9 +156,29 @@
                 document.getElementById('caseExpectedResult').value = data.expected_result || '';
                 document.getElementById('caseValidation').value = data.validation_method || '';
                 
-                // 获取测试图片文件名
-                fetch(`/api/tasks/${data.document_id}/test-data`)
-                    .then(response => response.json())
+                // 获取测试用例所属的任务ID
+                fetch(`/api/testcases/${caseId}/task`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(taskData => {
+                        // 使用任务ID获取测试图片文件名
+                        const taskId = taskData.task_id;
+                        if (taskId) {
+                            return fetch(`/api/tasks/${taskId}/test-data`);
+                        } else {
+                            throw new Error('未找到对应的任务ID');
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(testDataResponse => {
                         const testCases = testDataResponse.test_cases || [];
                         const thisCase = testCases.find(tc => tc.case_id === caseId);
@@ -332,31 +352,46 @@
             console.log('测试用例更新成功:', data);
             
             // 如果提供了测试图片文件名，则更新测试数据
-            if (testData && data.document_id) {
-                // 准备更新测试数据的请求
-                const testDataRequest = {
-                    updates: [
-                        {
-                            case_id: caseId,
-                            test_data: testData
+            if (testData) {
+                // 获取测试用例的任务ID
+                return fetch(`/api/testcases/${caseId}/task`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error ${response.status}`);
                         }
-                    ]
-                };
-                
-                // 发送更新测试数据请求
-                return fetch(`/api/tasks/${data.document_id}/test-data`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(testDataRequest)
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        console.error('更新测试数据失败，但测试用例已更新');
-                    }
-                    return data; // 返回原始的测试用例数据
-                });
+                        return response.json();
+                    })
+                    .then(taskData => {
+                        const taskId = taskData.task_id;
+                        if (!taskId) {
+                            throw new Error('未找到对应的任务ID');
+                        }
+                        
+                        // 准备更新测试数据的请求
+                        const testDataRequest = {
+                            updates: [
+                                {
+                                    case_id: caseId,
+                                    test_data: testData
+                                }
+                            ]
+                        };
+                        
+                        // 使用正确的任务ID发送更新测试数据请求
+                        return fetch(`/api/tasks/${taskId}/test-data`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(testDataRequest)
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                console.error('更新测试数据失败，但测试用例已更新');
+                            }
+                            return data; // 返回原始的测试用例数据
+                        });
+                    });
             }
             
             return data;

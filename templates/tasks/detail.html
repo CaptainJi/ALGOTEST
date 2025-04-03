@@ -520,8 +520,52 @@
 
     function executeSingleTest(caseId) {
         console.log(`执行单个测试: ${caseId}`);
-        alert(`正在执行测试用例: ${caseId}`);
-        // 这里应该发送API请求执行单个测试
+        
+        if (!confirm('确定要执行此测试用例吗？')) {
+            return;
+        }
+        
+        // 更新UI状态
+        const btn = document.querySelector(`button[onclick="executeSingleTest('${caseId}')"]`);
+        if (btn) {
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+            btn.disabled = true;
+        }
+        
+        // 发送API请求执行单个测试用例
+        fetch(`/api/testcases/${caseId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('测试用例执行已启动:', data);
+            
+            // 提示用户执行已开始
+            showNotification('success', `测试用例 ${caseId.substring(0, 8)} 执行已开始`);
+            
+            // 定时刷新页面，获取最新状态
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        })
+        .catch(error => {
+            console.error('执行测试用例失败:', error);
+            showNotification('danger', `执行测试用例失败: ${error.message}`);
+            
+            // 恢复按钮状态
+            if (btn) {
+                btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+                btn.disabled = false;
+            }
+        });
     }
 
     function executeTask(taskId) {

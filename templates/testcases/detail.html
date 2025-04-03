@@ -244,7 +244,23 @@
         
         // 获取测试图片文件名
         if (data.document_id) {
-            fetch(`/api/tasks/${data.document_id}/test-data`)
+            // 先获取测试用例所属的任务ID
+            fetch(`/api/testcases/${case_id}/task`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(taskData => {
+                    const taskId = taskData.task_id;
+                    if (!taskId) {
+                        throw new Error('未找到对应的任务ID');
+                    }
+                    
+                    // 使用任务ID获取测试图片文件名
+                    return fetch(`/api/tasks/${taskId}/test-data`);
+                })
                 .then(response => response.json())
                 .then(testDataResponse => {
                     const testCases = testDataResponse.test_cases || [];

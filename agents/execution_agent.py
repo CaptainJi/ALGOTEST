@@ -691,8 +691,8 @@ async def parse_command(state: Dict[str, Any]) -> Dict[str, Any]:
             log.error(f"未找到容器名称")
             raise ValueError("容器名称未设置，请先设置Docker容器")
         
-            container_name = result[0]
-            log.info(f"获取到容器名称: {container_name}")
+        container_name = result[0]
+        log.info(f"获取到容器名称: {container_name}")
             
         # 获取测试数据路径
         test_data_query = text("SELECT test_data FROM test_cases WHERE case_id = :case_id")
@@ -729,13 +729,13 @@ async def parse_command(state: Dict[str, Any]) -> Dict[str, Any]:
         log.info(f"第一条命令策略: {first_strategy.tool} - {first_strategy.description}")
     
     # 更新状态
-        return {
-            **state,
+    return {
+        **state,
         "case_id": case_id,  # 设置当前执行的case_id
         "command_strategies": command_strategies,
         "current_strategy_index": 0,
         "status": "parsed"
-        }
+    }
 
 
 async def execute_command(state: ExecutionState) -> ExecutionState:
@@ -1374,7 +1374,7 @@ async def execute_container_command(task_id: str, command: str, external_output:
             is_error = True
             if not raw_stderr:
                 raw_stderr = raw_stdout
-        
+                
         # 保存完整的输出内容
         log.info("="*50)
         log.info(f"【命令结果】: {command}")

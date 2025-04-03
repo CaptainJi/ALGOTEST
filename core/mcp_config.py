@@ -19,7 +19,7 @@ MCP_PORT = int(os.getenv("MCP_PORT", "2800"))
 SSE_URL = f"http://{MCP_HOST}:{MCP_PORT}/sse"
 
 # 命令格式文档路径
-CMD_FORMAT_PATH = os.getenv("CMD_FORMAT_PATH", "../data/cmd_require.md")
+CMD_FORMAT_PATH = os.getenv("CMD_FORMAT_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cmd_require.md"))
 
 def get_mcp_config() -> Dict[str, Any]:
     """
