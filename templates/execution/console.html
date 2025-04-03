@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block page_title %}测试执行控制台{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" id="executionActions">
+    <a href="/tasks/{{ task_id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回任务
+    </a>
+    <button id="stopExecutionBtn" class="btn btn-danger" style="display: none;">
+        <i class="bi bi-stop-circle me-1"></i> 停止执行
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="bi bi-terminal me-2"></i>执行日志
+                        <small class="text-muted">任务ID: {{ task_id }}</small>
+                    </h5>
+                    
+                    <!-- 执行状态 -->
+                    <div class="alert alert-info" id="executionStatus">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">执行中...</span>
+                            </div>
+                            <span>正在执行测试...</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 执行进度 -->
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div id="executionProgress" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%">
+                            0%
+                        </div>
+                    </div>
+                    
+                    <!-- 执行统计 -->
+                    <div class="row mb-3">
+                        <div class="col">
+                            <div class="card bg-light">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>总用例数</div>
+                                        <h4 id="totalCases" class="mb-0">0</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>已执行</div>
+                                        <h4 id="executedCases" class="mb-0">0</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card bg-success text-white">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>通过</div>
+                                        <h4 id="passedCases" class="mb-0">0</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card bg-danger text-white">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>失败</div>
+                                        <h4 id="failedCases" class="mb-0">0</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 执行日志 -->
+                    <div class="card bg-dark text-light">
+                        <div class="card-body">
+                            <pre id="executionLog" class="mb-0" style="max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const taskId = '{{ task_id }}';
+    let isExecuting = true;
+    let updateTimer = null;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // 开始轮询执行状态
+        updateExecutionStatus();
+        
+        // 绑定停止执行按钮事件
+        document.getElementById('stopExecutionBtn').addEventListener('click', function() {
+            if (confirm('确定要停止执行吗？这可能会导致测试结果不完整。')) {
+                stopExecution();
+            }
+        });
+    });
+    
+    function updateExecutionStatus() {
+        fetch(`/api/tasks/${taskId}/status`)
+            .then(response => response.json())
+            .then(data => {
+                updateUI(data);
+                
+                // 如果任务还在执行中，继续轮询
+                if (isExecuting) {
+                    updateTimer = setTimeout(updateExecutionStatus, 2000);
+                }
+            })
+            .catch(error => {
+                console.error('获取执行状态失败:', error);
+                showNotification('danger', `获取执行状态失败: ${error.message}`);
+                
+                // 发生错误时也继续轮询
+                if (isExecuting) {
+                    updateTimer = setTimeout(updateExecutionStatus, 5000);
+                }
+            });
+    }
+    
+    function updateUI(data) {
+        // 更新进度条
+        const progress = data.progress_percent || 0;
+        const progressBar = document.getElementById('executionProgress');
+        progressBar.style.width = `${progress}%`;
+        progressBar.textContent = `${progress}%`;
+        
+        // 更新统计数据
+        document.getElementById('totalCases').textContent = data.total_cases || 0;
+        document.getElementById('executedCases').textContent = data.completed_cases || 0;
+        document.getElementById('passedCases').textContent = data.passed_cases || 0;
+        document.getElementById('failedCases').textContent = data.failed_cases || 0;
+        
+        // 更新执行状态
+        const statusDiv = document.getElementById('executionStatus');
+        const stopBtn = document.getElementById('stopExecutionBtn');
+        
+        if (data.status === 'completed') {
+            isExecuting = false;
+            clearTimeout(updateTimer);
+            
+            statusDiv.className = 'alert alert-success';
+            statusDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <span>测试执行完成！</span>
+                </div>
+            `;
+            stopBtn.style.display = 'none';
+            
+            // 显示查看报告按钮
+            const actionsDiv = document.getElementById('executionActions');
+            actionsDiv.innerHTML += `
+                <a href="/tasks/${taskId}/report" class="btn btn-success">
+                    <i class="bi bi-file-text me-1"></i> 查看报告
+                </a>
+            `;
+            
+        } else if (data.status === 'failed') {
+            isExecuting = false;
+            clearTimeout(updateTimer);
+            
+            statusDiv.className = 'alert alert-danger';
+            statusDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <span>测试执行失败！</span>
+                </div>
+            `;
+            stopBtn.style.display = 'none';
+            
+        } else if (data.status === 'executing') {
+            stopBtn.style.display = 'inline-block';
+        }
+        
+        // 更新执行日志
+        const logDiv = document.getElementById('executionLog');
+        let logContent = '';
+        
+        if (data.case_details && data.case_details.length > 0) {
+            data.case_details.forEach(detail => {
+                const status = detail.is_passed ? '✅ 通过' : '❌ 失败';
+                logContent += `[${detail.case_id}] ${detail.name} - ${status}\n`;
+                if (detail.result_analysis) {
+                    logContent += `分析结果: ${detail.result_analysis}\n`;
+                }
+                logContent += '\n';
+            });
+        }
+        
+        logDiv.textContent = logContent;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    
+    function stopExecution() {
+        fetch(`/api/tasks/${taskId}/stop`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', '已发送停止执行命令');
+            } else {
+                showNotification('danger', data.message || '停止执行失败');
+            }
+        })
+        .catch(error => {
+            console.error('停止执行失败:', error);
+            showNotification('danger', `停止执行失败: ${error.message}`);
+        });
+    }
+    
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // 在页面顶部显示通知
+        const container = document.querySelector('.container');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // 自动关闭通知
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 5000);
+    }
+</script>
+{% endblock %} 

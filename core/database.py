@@ -9,6 +9,7 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
+import json
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, JSON, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -268,28 +269,35 @@ def update_test_case_status(case_id: str, status: str, result: Any = None) -> Op
         # 更新状态
         case.status = status
         
-        if status == "completed" or status == "failed":
-            # 判断result的类型，处理文本或字典类型
-            success = False
+        # 根据状态设置默认的通过/失败状态
+        if status == "completed":
+            # 如果状态是completed，需要根据result判断是否通过
+            success = True  # 默认为通过
             
-            if isinstance(result, dict):
-                # 如果是字典类型，尝试提取成功标志
-                success = result.get("success", False)
-            elif isinstance(result, str):
-                # 如果是字符串类型，作为原始输出保存
-                # 通过简单启发式检测执行是否成功（输出中不包含常见错误关键词）
-                error_keywords = ["错误", "Error", "Failed", "失败", "Exception", "异常"]
-                success = not any(keyword in result for keyword in error_keywords)
-            else:
-                # 其他类型，尝试转换为字符串
-                result = str(result) if result is not None else ""
-            
-            # 直接更新测试用例对象的字段
             if result is not None:
-                case.actual_output = result
-                case.is_passed = success
+                if isinstance(result, dict):
+                    # 如果是字典类型，尝试提取成功标志
+                    success = result.get("success", True)
+                elif isinstance(result, str):
+                    # 如果是字符串类型，检查是否包含错误关键词
+                    error_keywords = ["错误", "Error", "Failed", "失败", "Exception", "异常"]
+                    success = not any(keyword in result for keyword in error_keywords)
             
-            logger.info(f"更新测试结果: {case_id}")
+            case.is_passed = success
+            
+        elif status == "failed":
+            # 如果状态是failed，直接设置为未通过
+            case.is_passed = False
+        else:
+            # 其他状态（如pending、running）保持is_passed为None
+            case.is_passed = None
+        
+        # 更新结果
+        if result is not None:
+            if isinstance(result, (str, dict)):
+                case.actual_output = result if isinstance(result, str) else json.dumps(result)
+            else:
+                case.actual_output = str(result)
         
         db.commit()
         db.refresh(case)

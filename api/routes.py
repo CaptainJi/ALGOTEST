@@ -1558,8 +1558,13 @@ async def get_task_test_status(
         case_details = []
         
         for case in cases:
+            # 从input_data中获取测试用例名称
+            input_data = case.input_data or {}
+            name = input_data.get("name", "未命名测试用例")
+            
             case_info = {
                 "case_id": case.case_id,
+                "name": name,  # 添加测试用例名称
                 "status": case.status or "pending",
                 "is_passed": case.is_passed,
                 "result_analysis": case.result_analysis,

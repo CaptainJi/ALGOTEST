@@ -880,181 +880,95 @@ async def execute_command(state: ExecutionState) -> ExecutionState:
 
 
 async def save_result(state: ExecutionState) -> ExecutionState:
-    """
-    保存执行结果，并决定是否继续执行下一个测试用例
-    
-    Args:
-        state: 当前状态
-        
-    Returns:
-        更新后的状态
-    """
-    case_id = state.get("case_id")
-    log.info(f"开始保存执行结果: 用例ID={case_id}")
-    
+    """保存执行结果到数据库"""
     try:
+        case_id = state.get("current_case_id")
+        if not case_id:
+            raise ValueError("当前没有正在执行的测试用例")
+            
         # 获取执行结果
-        execution_result = state.get("execution_result")
-        if not execution_result:
-            raise ValueError("执行结果为空")
+        all_results = state.get("execution_results", [])
+        execution_time = state.get("execution_time", 0)
         
-        # 获取执行成功/失败信息
-        success = execution_result.get("success", False)
-        success_count = execution_result.get("success_count", 0)
-        fail_count = execution_result.get("fail_count", 0)
-        all_results = execution_result.get("all_results", [])
+        # 判断执行是否成功
+        success = True  # 默认为成功
+        error_description = ""
         
-        # 获取执行时间（毫秒）
-        execution_time = execution_result.get("execution_time", 0)
+        if not all_results:
+            success = False
+            error_description = "没有执行结果"
+        elif any(not result.get("success", True) for result in all_results):
+            success = False
+            # 获取第一个失败结果的错误信息
+            for result in all_results:
+                if not result.get("success", True):
+                    error_description = result.get("error", "未知错误")
+                    break
         
-        # 生成详细执行摘要
-        summary = {
+        # 构建结果数据
+        result_data = {
             "success": success,
-            "total_commands": len(all_results),
-            "success_count": success_count,
-            "fail_count": fail_count,
             "execution_time": execution_time,
-            "commands": []
+            "error": error_description if not success else None,
+            "results": all_results
         }
         
-        # 原始完整输出
-        raw_outputs = []
-        
-        # 添加每条命令的详细结果
-        for result_item in all_results:
-            strategy = result_item.get("strategy")
-            result = result_item.get("result", {})
-            
-            # 收集原始输出内容
-            full_output = result_item.get("full_output", "")
-            stdout = result.get("result", {}).get("stdout", "") if result.get("result") else ""
-            stderr = result.get("result", {}).get("stderr", "") if result.get("result") else ""
-            raw_stdout = result.get("raw_stdout", "")
-            raw_stderr = result.get("raw_stderr", "")
-            
-            raw_outputs.append({
-                "full_output": full_output,
-                "stdout": stdout,
-                "stderr": stderr,
-                "raw_stdout": raw_stdout,
-                "raw_stderr": raw_stderr
-            })
-            
-            # 提取重要信息，但保留完整的输出数据
-            command_result = {
-                "index": result_item.get("strategy_index"),
-                "description": strategy.description if strategy else "未知命令",
-                "command": strategy.parameters.get("command") if strategy else "未知命令",
-                "success": result.get("success", False),
-                # 保存完整的输出内容
-                "full_output": full_output,
-                "stdout": stdout,
-                "stderr": stderr,
-                "raw_stdout": raw_stdout,
-                "raw_stderr": raw_stderr,
-                "error": result.get("error", ""),
-                # 保存执行时间
-                "execution_time": result.get("execution_time", 0)
-            }
-            
-            summary["commands"].append(command_result)
-        
-        log.info(f"执行摘要: 总计 {len(all_results)} 条命令，成功 {success_count} 条，失败 {fail_count} 条，耗时 {execution_time}毫秒")
-        
-        # 准备要存储到数据库的完整测试结果数据
-        # 替换为简单的错误描述，不再单独存储error_message
-        error_description = ""
-        if not success and all_results and len(all_results) > 0:
-            # 如果失败，提取错误信息
-            first_result = all_results[0].get("result", {})
-            error_description = first_result.get("error", "")
-        
-        # 获取原始命令输出作为实际输出
-        raw_output_text = ""
-        if all_results and len(all_results) > 0:
-            # 获取第一个结果的原始输出
-            first_result = all_results[0]
-            if first_result.get("full_output"):
-                raw_output_text = first_result.get("full_output")
-            elif first_result.get("raw_stdout"):
-                raw_output_text = first_result.get("raw_stdout")
-                if first_result.get("raw_stderr"):
-                    raw_output_text += "\n\nSTDERR:\n" + first_result.get("raw_stderr")
+        # 获取原始命令输出
+        raw_output = []
+        for result in all_results:
+            if result.get("full_output"):
+                raw_output.append(result["full_output"])
+            else:
+                if result.get("raw_stdout"):
+                    raw_output.append(result["raw_stdout"])
+                if result.get("raw_stderr"):
+                    raw_output.append("STDERR:\n" + result["raw_stderr"])
         
         # 添加基本结果分析
-        result_analysis = f"执行{'成功' if success else '失败'}"
+        result_analysis = []
+        result_analysis.append(f"执行{'成功' if success else '失败'}")
         if error_description:
-            result_analysis += f"，错误原因: {error_description}"
+            result_analysis.append(f"错误原因: {error_description}")
         if execution_time > 0:
-            result_analysis += f"，执行耗时: {execution_time}毫秒"
+            result_analysis.append(f"执行耗时: {execution_time}毫秒")
         
         # 更新测试用例状态和结果
         with get_db() as db:
-            update_test_case_status(
+            # 更新状态和结果
+            case = update_test_case_status(
                 case_id=case_id,
                 status="completed" if success else "failed",
-                result=raw_output_text  # 传递原始文本输出
+                result=result_data
             )
             
-            # 手动更新result_analysis字段
-            case = db.query(TestCase).filter(TestCase.case_id == case_id).first()
             if case:
-                case.result_analysis = result_analysis
+                # 更新分析结果
+                case.result_analysis = "\n".join(result_analysis)
+                # 更新原始输出
+                case.actual_output = "\n\n".join(raw_output)
                 db.commit()
         
-        log.info(f"执行结果保存成功: 用例ID={case_id}")
+        log.info(f"执行结果保存成功: 用例ID={case_id}, 执行{'成功' if success else '失败'}")
         
         # 获取当前测试用例索引
         current_index = state.get("current_case_index", 0)
         test_cases = state.get("test_cases", [])
         
-        # 检查是否还有下一个测试用例需要执行
-        if current_index + 1 < len(test_cases):
-            # 还有测试用例需要执行，更新索引并准备执行下一个
-            log.info(f"准备执行下一个测试用例，当前进度: {current_index + 1}/{len(test_cases)}")
-            next_state = {
-                **state,
-                "current_case_index": current_index + 1,
-                "case_id": None,  # 清除当前case_id
-                "command_strategies": None,  # 清除当前命令策略
-                "execution_result": None,  # 清除当前执行结果
-                "status": "next_case"  # 设置状态为下一个测试用例
-            }
-            
-            # 调用parse_command函数解析下一个测试用例的命令
-            next_state = await parse_command(next_state)
-            
-            # 如果解析成功，继续执行命令
-            if next_state.get("status") == "parsed":
-                next_state = await execute_command(next_state)
-                
-                # 如果执行成功，递归调用save_result保存结果
-                if next_state.get("status") == "executed":
-                    return await save_result(next_state)
-            
-            # 如果过程中出现错误，返回错误状态
-            return next_state
-        else:
-            # 所有测试用例已执行完成，更新任务状态
-            with get_db() as db:
-                # 更新测试任务状态
-                update_test_task_status(
-                    task_id=state["task_id"],
-                    status="completed"
-                )
-            
-            log.info(f"所有测试用例执行完成: 任务ID={state['task_id']}, 共{len(test_cases)}个测试用例")
-            
-            # 更新状态
-            return {
-                **state,
-                "status": "completed"
-            }
-    except Exception as e:
-        log.error(f"保存执行结果失败: {str(e)}")
+        # 更新状态
         return {
             **state,
-            "errors": state.get("errors", []) + [str(e)],
+            "status": "completed",
+            "current_case_index": current_index + 1 if current_index < len(test_cases) else current_index,
+            "execution_results": [],  # 清空执行结果，准备下一个用例
+            "execution_time": 0  # 重置执行时间
+        }
+        
+    except Exception as e:
+        error_msg = f"保存执行结果失败: {str(e)}"
+        log.error(error_msg)
+        return {
+            **state,
+            "errors": state.get("errors", []) + [error_msg],
             "status": "error"
         }
 
