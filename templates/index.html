@@ -1,31 +1,51 @@
 {% extends "base.html" %}
 
+{% block page_title %}测试平台首页{% endblock %}
+
 {% block content %}
-<div class="container">
+<div class="container-fluid">
+    <!-- 快速开始区域 -->
     <div class="row mb-4">
-        <div class="col-md-12">
+        <div class="col-12">
             <div class="card">
-                <div class="card-body p-4">
-                    <div class="row align-items-center">
-                        <div class="col-md-7">
-                            <h3 class="display-6 fw-bold mb-3">欢迎使用 <span style="background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ALGOTEST</span></h3>
-                            <p class="lead">
-                                ALGOTEST 是一个大模型驱动的算法测试系统，能够自动分析算法需求文档并生成测试用例。
-                            </p>
-                            <div class="d-flex flex-wrap mt-4">
-                                <a href="/documents/upload" class="btn btn-primary me-2 mb-2">
-                                    <i class="bi bi-upload me-1"></i> 上传文档
-                                </a>
-                                <a href="/documents" class="btn btn-outline-primary me-2 mb-2">
-                                    <i class="bi bi-file-earmark-text me-1"></i> 查看文档
-                                </a>
-                                <a href="/tasks" class="btn btn-outline-secondary mb-2">
-                                    <i class="bi bi-kanban me-1"></i> 任务管理
-                                </a>
+                <div class="card-body">
+                    <h5 class="card-title">快速开始</h5>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-primary">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="text-center mb-3">
+                                        <i class="bi bi-plus-circle text-primary" style="font-size: 2rem;"></i>
+                                    </div>
+                                    <h5 class="card-title text-center">创建新任务</h5>
+                                    <p class="card-text flex-grow-1">上传测试文档，创建新的测试任务，配置算法镜像和数据集。</p>
+                                    <a href="/tasks/create" class="btn btn-primary mt-auto">开始创建</a>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-md-5 d-none d-md-block text-center">
-                            <img src="https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji/assets/rocket/3d/rocket_3d.png" alt="ALGOTEST" class="img-fluid" style="max-height: 200px; animation: float 3s ease-in-out infinite;">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-success">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="text-center mb-3">
+                                        <i class="bi bi-list-check text-success" style="font-size: 2rem;"></i>
+                                    </div>
+                                    <h5 class="card-title text-center">管理测试任务</h5>
+                                    <p class="card-text flex-grow-1">查看和管理已创建的测试任务，包括配置、执行和查看结果。</p>
+                                    <a href="/tasks" class="btn btn-success mt-auto">查看任务</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-info">
+                                <div class="card-body d-flex flex-column">
+                                    <div class="text-center mb-3">
+                                        <i class="bi bi-clipboard-data text-info" style="font-size: 2rem;"></i>
+                                    </div>
+                                    <h5 class="card-title text-center">管理测试用例</h5>
+                                    <p class="card-text flex-grow-1">查看和管理所有测试用例，配置测试数据和测试参数。</p>
+                                    <a href="/testcases" class="btn btn-info mt-auto">管理用例</a>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -33,118 +53,80 @@
         </div>
     </div>
 
+    <!-- MCP服务状态和测试统计 -->
     <div class="row mb-4">
-        <!-- 统计卡片 -->
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card">
-                <div class="card-icon">
-                    <i class="bi bi-file-earmark-text"></i>
-                </div>
-                <h6 class="card-title">文档总数</h6>
-                <div class="card-value" id="documentsCount">0</div>
-                <p class="text-muted mb-0">已上传的需求文档</p>
-            </div>
-        </div>
-        
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card">
-                <div class="card-icon">
-                    <i class="bi bi-list-check"></i>
-                </div>
-                <h6 class="card-title">测试用例</h6>
-                <div class="card-value" id="testCasesCount">0</div>
-                <p class="text-muted mb-0">自动生成的测试用例</p>
-            </div>
-        </div>
-        
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card">
-                <div class="card-icon">
-                    <i class="bi bi-hourglass-split"></i>
-                </div>
-                <h6 class="card-title">待处理任务</h6>
-                <div class="card-value" id="pendingTasksCount">0</div>
-                <p class="text-muted mb-0">等待执行的任务</p>
-            </div>
-        </div>
-        
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="stat-card">
-                <div class="card-icon">
-                    <i class="bi bi-check2-circle"></i>
-                </div>
-                <h6 class="card-title">已完成任务</h6>
-                <div class="card-value" id="completedTasksCount">0</div>
-                <p class="text-muted mb-0">成功执行的任务</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-bar-chart-line me-2"></i>测试数据分析</span>
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="chartDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            近7天
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="chartDropdown">
-                            <li><a class="dropdown-item" href="#">近7天</a></li>
-                            <li><a class="dropdown-item" href="#">近30天</a></li>
-                            <li><a class="dropdown-item" href="#">全部数据</a></li>
-                        </ul>
+        <!-- MCP服务状态 -->
+        <div class="col-md-4 mb-3 mb-md-0">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">MCP服务状态</h5>
+                    <div id="mcpStatus" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">检测中...</span>
+                        </div>
+                        <p class="mt-3 mb-0">正在检测服务状态...</p>
                     </div>
                 </div>
-                <div class="card-body" style="height: 300px; position: relative;">
-                    <canvas id="testsChart"></canvas>
-                </div>
             </div>
         </div>
         
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <i class="bi bi-pie-chart me-2"></i>测试结果分布
-                </div>
-                <div class="card-body" style="height: 300px; position: relative;">
-                    <canvas id="resultsChart"></canvas>
+        <!-- 测试统计 -->
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">测试统计</h5>
+                    <div class="row text-center">
+                        <div class="col-6 col-md-3 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h2 id="totalTasks" class="fw-bold text-primary mb-0">0</h2>
+                                <div class="text-muted small">总任务数</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h2 id="totalCases" class="fw-bold text-secondary mb-0">0</h2>
+                                <div class="text-muted small">总用例数</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h2 id="successRate" class="fw-bold text-success mb-0">0%</h2>
+                                <div class="text-muted small">通过率</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h2 id="todayExecutions" class="fw-bold text-info mb-0">0</h2>
+                                <div class="text-muted small">今日执行</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-clock-history me-2"></i>最近任务</span>
-                    <a href="/tasks" class="btn btn-sm btn-outline-primary">查看全部</a>
+    
+    <!-- 图表区域 -->
+    <div class="row mb-4">
+        <!-- 执行趋势 -->
+        <div class="col-md-6 mb-3 mb-md-0">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">执行趋势</h5>
+                    <div style="height: 250px;">
+                        <canvas id="executionTrendChart"></canvas>
+                    </div>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" id="recentTasksTable">
-                        <table class="table table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>任务ID</th>
-                                    <th>文档</th>
-                                    <th>测试用例</th>
-                                    <th>状态</th>
-                                    <th>创建时间</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td colspan="6" class="text-center py-4">
-                                        <div class="spinner-border spinner-border-sm text-secondary" role="status">
-                                            <span class="visually-hidden">加载中...</span>
-                                        </div>
-                                        <span class="ms-2">加载任务列表...</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+            </div>
+        </div>
+        
+        <!-- 用例状态分布 -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">用例状态分布</h5>
+                    <div style="height: 250px;">
+                        <canvas id="caseStatusChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -154,235 +136,223 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // 计数器动画效果
-    function animateValue(id, start, end, duration) {
-        if (start === end) return;
-        const range = end - start;
-        let current = start;
-        const increment = end > start ? 1 : -1;
-        const stepTime = Math.abs(Math.floor(duration / range));
-        const obj = document.getElementById(id);
-        const timer = setInterval(function() {
-            current += increment;
-            obj.innerHTML = current;
-            if (current == end) {
-                clearInterval(timer);
-            }
-        }, stepTime);
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
+        // 检测MCP服务状态
+        checkMcpStatus();
+        
+        // 加载仪表盘数据
+        loadDashboardStats();
+        
         // 初始化图表
         initCharts();
+    });
+    
+    function checkMcpStatus() {
+        const statusDiv = document.getElementById('mcpStatus');
         
-        // 加载仪表盘统计数据
+        fetch('/api/mcp/status')
+            .then(response => response.json())
+            .then(data => {
+                console.log('MCP状态检查结果:', data);
+                if (data.status === 'running') {
+                    statusDiv.innerHTML = `
+                        <div class="text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                            </div>
+                            <h4 class="text-success mb-1">服务运行中</h4>
+                            <p class="text-muted small mb-0">服务健康状态：良好</p>
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 3rem;"></i>
+                            </div>
+                            <h4 class="text-warning mb-1">服务异常</h4>
+                            <p class="text-muted small mb-0">${data.message || '请检查服务状态'}</p>
+                            <button id="retryMcpBtn" class="btn btn-sm btn-outline-warning mt-2">
+                                <i class="bi bi-arrow-clockwise me-1"></i>重试连接
+                            </button>
+                        </div>
+                    `;
+                    
+                    // 添加重试按钮事件
+                    setTimeout(() => {
+                        const retryBtn = document.getElementById('retryMcpBtn');
+                        if (retryBtn) {
+                            retryBtn.addEventListener('click', function() {
+                                statusDiv.innerHTML = `
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">检测中...</span>
+                                        </div>
+                                        <p class="mt-3 mb-0">正在重新检测服务状态...</p>
+                                    </div>
+                                `;
+                                checkMcpStatus();
+                            });
+                        }
+                    }, 0);
+                }
+            })
+            .catch(error => {
+                console.error('获取MCP状态失败:', error);
+                statusDiv.innerHTML = `
+                    <div class="text-center">
+                        <div class="mb-3">
+                            <i class="bi bi-x-circle-fill text-danger" style="font-size: 3rem;"></i>
+                        </div>
+                        <h4 class="text-danger mb-1">无法连接服务</h4>
+                        <p class="text-muted small mb-0">请检查网络连接</p>
+                        <button id="retryMcpBtn" class="btn btn-sm btn-outline-danger mt-2">
+                            <i class="bi bi-arrow-clockwise me-1"></i>重试连接
+                        </button>
+                    </div>
+                `;
+                
+                // 添加重试按钮事件
+                setTimeout(() => {
+                    const retryBtn = document.getElementById('retryMcpBtn');
+                    if (retryBtn) {
+                        retryBtn.addEventListener('click', function() {
+                            statusDiv.innerHTML = `
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">检测中...</span>
+                                    </div>
+                                    <p class="mt-3 mb-0">正在重新检测服务状态...</p>
+                                </div>
+                            `;
+                            checkMcpStatus();
+                        });
+                    }
+                }, 0);
+            });
+    }
+    
+    function loadDashboardStats() {
         fetch('/api/dashboard/stats')
             .then(response => response.json())
             .then(data => {
-                updateDashboardStats(data);
+                document.getElementById('totalTasks').textContent = data.total_tasks || 0;
+                document.getElementById('totalCases').textContent = data.total_cases || 0;
+                document.getElementById('successRate').textContent = `${data.success_rate || 0}%`;
+                document.getElementById('todayExecutions').textContent = data.today_executions || 0;
             })
             .catch(error => {
                 console.error('获取仪表盘统计数据失败:', error);
+                showNotification('danger', '获取统计数据失败，请刷新页面重试');
             });
-            
-        // 加载最近任务列表
-        fetch('/api/tasks')
+    }
+    
+    function initCharts() {
+        // 执行趋势图表
+        fetch('/api/dashboard/trend')
             .then(response => response.json())
             .then(data => {
-                updateRecentTasks(data);
+                const ctx = document.getElementById('executionTrendChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates,
+                        datasets: [
+                            {
+                                label: '执行数',
+                                data: data.executed,
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                borderWidth: 2,
+                                fill: true
+                            },
+                            {
+                                label: '通过数',
+                                data: data.passed,
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                borderWidth: 2,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
             })
             .catch(error => {
-                console.error('获取任务列表失败:', error);
+                console.error('获取趋势数据失败:', error);
             });
-    });
-
-    function updateDashboardStats(data) {
-        // 更新统计卡片
-        animateValue('documentsCount', 0, data.document_count || 0, 1000);
-        animateValue('testCasesCount', 0, data.test_case_count || 0, 1000);
-        animateValue('pendingTasksCount', 0, data.waiting_tasks || 0, 1000);
-        animateValue('completedTasksCount', 0, data.completed_tasks || 0, 1000);
-        
-        // 更新测试结果分布图表
-        if (window.resultsChart) {
-            const resultStats = data.test_result_stats || {};
-            window.resultsChart.data.datasets[0].data = [
-                resultStats.passed || 0,
-                resultStats.failed || 0,
-                resultStats.pending || 0
-            ];
-            window.resultsChart.update();
-        }
-
-        // 更新测试数据分析图表
-        if (window.testsChart && data.daily_stats) {
-            const dailyStats = data.daily_stats || [];
-            // 反转数组以确保日期按照从左到右的顺序显示
-            const reversedStats = [...dailyStats].reverse();
             
-            window.testsChart.data.labels = reversedStats.map(stat => {
-                const date = new Date(stat.date);
-                return date.toLocaleDateString('zh-CN', {month: 'numeric', day: 'numeric'});
-            });
-            window.testsChart.data.datasets[0].data = reversedStats.map(stat => stat.count);
-            window.testsChart.update('none'); // 使用 'none' 模式更新以避免动画
-        }
-    }
-
-    function updateRecentTasks(data) {
-        const tasks = data.tasks || [];
-        const tbody = document.querySelector('#recentTasksTable tbody');
-        tbody.innerHTML = '';
-        
-        if (tasks.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="text-center py-4">
-                        <i class="bi bi-inbox text-muted"></i>
-                        <span class="ms-2">暂无任务数据</span>
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        tasks.slice(0, 5).forEach(task => {
-            const statusClass = {
-                'completed': 'success',
-                'failed': 'danger',
-                'running': 'primary',
-                'pending': 'warning',
-                'created': 'info'
-            }[task.status] || 'secondary';
-            
-            tbody.innerHTML += `
-                <tr>
-                    <td>${task.task_id}</td>
-                    <td>${task.document_id || '-'}</td>
-                    <td>${task.test_cases_count || 0}</td>
-                    <td><span class="badge bg-${statusClass}">${task.status}</span></td>
-                    <td>${new Date(task.created_at).toLocaleString()}</td>
-                    <td>
-                        <a href="/tasks/${task.task_id}" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-eye"></i>
-                        </a>
-                    </td>
-                </tr>
-            `;
-        });
-    }
-
-    function initCharts() {
-        // 初始化测试结果分布图表
-        const resultsCtx = document.getElementById('resultsChart').getContext('2d');
-        window.resultsChart = new Chart(resultsCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['通过', '失败', '待执行'],
-                datasets: [{
-                    data: [0, 0, 0],
-                    backgroundColor: [
-                        'rgba(40, 167, 69, 0.8)',  // 成功 - 绿色
-                        'rgba(220, 53, 69, 0.8)',  // 失败 - 红色
-                        'rgba(255, 193, 7, 0.8)'   // 待执行 - 黄色
-                    ],
-                    borderColor: [
-                        'rgb(40, 167, 69)',
-                        'rgb(220, 53, 69)',
-                        'rgb(255, 193, 7)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true
-                        }
+        // 用例状态分布图表
+        fetch('/api/dashboard/distribution')
+            .then(response => response.json())
+            .then(data => {
+                const ctx = document.getElementById('caseStatusChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['通过', '失败', '待执行'],
+                        datasets: [{
+                            data: [data.passed, data.failed, data.pending],
+                            backgroundColor: [
+                                'rgba(40, 167, 69, 0.7)',
+                                'rgba(220, 53, 69, 0.7)',
+                                'rgba(108, 117, 125, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(40, 167, 69, 1)',
+                                'rgba(220, 53, 69, 1)',
+                                'rgba(108, 117, 125, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                return `${label}: ${value} (${percentage}%)`;
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                position: 'right',
                             }
                         }
                     }
-                },
-                cutout: '60%'
-            }
-        });
+                });
+            })
+            .catch(error => {
+                console.error('获取分布数据失败:', error);
+            });
+    }
+    
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
         
-        // 初始化测试数据分析图表
-        const testsCtx = document.getElementById('testsChart').getContext('2d');
-        window.testsChart = new Chart(testsCtx, {
-            type: 'line',
-            data: {
-                labels: Array(7).fill(''),
-                datasets: [{
-                    label: '执行的测试用例',
-                    data: Array(7).fill(0),
-                    borderColor: 'rgba(13, 110, 253, 0.8)',
-                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        callbacks: {
-                            title: function(context) {
-                                return `${context[0].label} 测试执行情况`;
-                            },
-                            label: function(context) {
-                                return `执行数量: ${context.raw}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        },
-                        grid: {
-                            drawBorder: false,
-                            color: 'rgba(0, 0, 0, 0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            display: false
-                        },
-                        ticks: {
-                            maxRotation: 0
-                        }
-                    }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                }
-            }
-        });
+        document.body.appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 3000);
     }
 </script>
 {% endblock %} 

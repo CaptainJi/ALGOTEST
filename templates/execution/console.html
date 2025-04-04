@@ -5,94 +5,176 @@
 {% block page_actions %}
 <div class="btn-group" id="executionActions">
     <a href="/tasks/{{ task_id }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> 返回任务
+        <i class="bi bi-arrow-left me-1"></i> 返回任务
     </a>
-    <button id="stopExecutionBtn" class="btn btn-danger" style="display: none;">
-        <i class="bi bi-stop-circle me-1"></i> 停止执行
+    <button type="button" class="btn btn-primary" id="startBtn">
+        <i class="bi bi-play-fill me-1"></i> 开始执行
+    </button>
+    <button type="button" class="btn btn-danger" id="stopBtn" style="display: none;">
+        <i class="bi bi-stop-fill me-1"></i> 停止执行
     </button>
 </div>
 {% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container-fluid">
     <div class="row">
-        <div class="col-md-12">
-            <div class="card">
+        <!-- 左侧：执行状态和统计 -->
+        <div class="col-md-3">
+            <div class="card mb-3">
                 <div class="card-body">
-                    <h5 class="card-title mb-3">
-                        <i class="bi bi-terminal me-2"></i>执行日志
-                        <small class="text-muted">任务ID: {{ task_id }}</small>
-                    </h5>
-                    
-                    <!-- 执行状态 -->
-                    <div class="alert alert-info" id="executionStatus">
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm me-2" role="status">
-                                <span class="visually-hidden">执行中...</span>
-                            </div>
-                            <span>正在执行测试...</span>
-                        </div>
+                    <h5 class="card-title">执行状态</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span>状态：</span>
+                        <span id="executionStatus" class="badge bg-secondary">未开始</span>
                     </div>
-                    
-                    <!-- 执行进度 -->
-                    <div class="progress mb-3" style="height: 20px;">
-                        <div id="executionProgress" class="progress-bar progress-bar-striped progress-bar-animated" 
-                             role="progressbar" style="width: 0%">
-                            0%
-                        </div>
+                    <div class="progress mb-3">
+                        <div id="executionProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
                     </div>
-                    
-                    <!-- 执行统计 -->
-                    <div class="row mb-3">
-                        <div class="col">
-                            <div class="card bg-light">
-                                <div class="card-body py-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>总用例数</div>
-                                        <h4 id="totalCases" class="mb-0">0</h4>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card bg-primary text-white">
-                                <div class="card-body py-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>已执行</div>
-                                        <h4 id="executedCases" class="mb-0">0</h4>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card bg-success text-white">
-                                <div class="card-body py-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>通过</div>
-                                        <h4 id="passedCases" class="mb-0">0</h4>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="card bg-danger text-white">
-                                <div class="card-body py-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>失败</div>
-                                        <h4 id="failedCases" class="mb-0">0</h4>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="d-flex justify-content-between">
+                        <span>开始时间：</span>
+                        <span id="startTime">-</span>
                     </div>
-                    
-                    <!-- 执行日志 -->
-                    <div class="card bg-dark text-light">
-                        <div class="card-body">
-                            <pre id="executionLog" class="mb-0" style="max-height: 400px; overflow-y: auto;"></pre>
+                    <div class="d-flex justify-content-between">
+                        <span>耗时：</span>
+                        <span id="duration">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">测试统计</h5>
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="d-flex flex-column">
+                                <span class="text-muted">总用例数</span>
+                                <span id="totalCases" class="h4">0</span>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="d-flex flex-column">
+                                <span class="text-muted">已执行</span>
+                                <span id="executedCases" class="h4">0</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex flex-column">
+                                <span class="text-success">通过</span>
+                                <span id="passedCases" class="h4 text-success">0</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex flex-column">
+                                <span class="text-danger">失败</span>
+                                <span id="failedCases" class="h4 text-danger">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">任务信息</h5>
+                    <div class="small">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>任务ID：</span>
+                            <span id="taskId" class="text-truncate">{{ task_id }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>文档：</span>
+                            <span id="documentId" class="text-truncate">-</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>算法镜像：</span>
+                            <span id="algorithmImage" class="text-truncate">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧：执行日志和测试用例 -->
+        <div class="col-md-9">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">执行日志</h5>
+                    <div id="executionLog" class="bg-dark text-light p-3 rounded" style="height: 300px; overflow-y: auto; font-family: monospace;">
+                        <div class="text-muted">等待执行开始...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">测试用例列表</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="casesTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%">序号</th>
+                                    <th style="width: 15%">用例ID</th>
+                                    <th style="width: 25%">名称</th>
+                                    <th style="width: 20%">测试数据</th>
+                                    <th style="width: 15%">状态</th>
+                                    <th style="width: 20%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="casesTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4">
+                                        <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                                            <span class="visually-hidden">加载中...</span>
+                                        </div>
+                                        <span class="ms-2">加载测试用例...</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 执行结果详情模态框 -->
+<div class="modal fade" id="resultModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">执行结果详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <h6 id="resultCaseName"></h6>
+                    <span id="resultCaseId" class="badge bg-light text-dark"></span>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>测试数据</h6>
+                    <div id="resultTestData" class="text-muted"></div>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>执行结果</h6>
+                    <div id="resultStatus"></div>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>结果分析</h6>
+                    <div id="resultAnalysis" class="p-3 bg-light rounded"></div>
+                </div>
+                
+                <div>
+                    <h6>执行日志</h6>
+                    <pre id="resultLog" class="p-3 bg-dark text-light rounded" style="max-height: 200px; overflow-y: auto;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
             </div>
         </div>
     </div>
@@ -102,162 +184,416 @@
 {% block extra_js %}
 <script>
     const taskId = '{{ task_id }}';
-    let isExecuting = true;
-    let updateTimer = null;
+    let executionInterval = null;
+    let cases = [];
+    let resultModal = null;
     
     document.addEventListener('DOMContentLoaded', function() {
-        // 开始轮询执行状态
-        updateExecutionStatus();
+        // 初始化模态框
+        resultModal = new bootstrap.Modal(document.getElementById('resultModal'));
         
-        // 绑定停止执行按钮事件
-        document.getElementById('stopExecutionBtn').addEventListener('click', function() {
-            if (confirm('确定要停止执行吗？这可能会导致测试结果不完整。')) {
-                stopExecution();
-            }
-        });
+        // 加载测试用例
+        loadTaskInfo();
+        loadTestCases();
+        
+        // 绑定按钮事件
+        document.getElementById('startBtn').addEventListener('click', startExecution);
+        document.getElementById('stopBtn').addEventListener('click', stopExecution);
     });
     
-    function updateExecutionStatus() {
-        fetch(`/api/tasks/${taskId}/status`)
+    function loadTaskInfo() {
+        fetch(`/api/tasks/${taskId}`)
             .then(response => response.json())
             .then(data => {
-                updateUI(data);
-                
-                // 如果任务还在执行中，继续轮询
-                if (isExecuting) {
-                    updateTimer = setTimeout(updateExecutionStatus, 2000);
-                }
+                document.getElementById('documentId').textContent = data.document_id || '-';
+                document.getElementById('algorithmImage').textContent = data.algorithm_image || '-';
             })
             .catch(error => {
-                console.error('获取执行状态失败:', error);
-                showNotification('danger', `获取执行状态失败: ${error.message}`);
-                
-                // 发生错误时也继续轮询
-                if (isExecuting) {
-                    updateTimer = setTimeout(updateExecutionStatus, 5000);
-                }
+                console.error('获取任务信息失败:', error);
+                showNotification('danger', `获取任务信息失败: ${error.message}`);
             });
     }
     
-    function updateUI(data) {
-        // 更新进度条
-        const progress = data.progress_percent || 0;
-        const progressBar = document.getElementById('executionProgress');
-        progressBar.style.width = `${progress}%`;
-        progressBar.textContent = `${progress}%`;
-        
-        // 更新统计数据
-        document.getElementById('totalCases').textContent = data.total_cases || 0;
-        document.getElementById('executedCases').textContent = data.completed_cases || 0;
-        document.getElementById('passedCases').textContent = data.passed_cases || 0;
-        document.getElementById('failedCases').textContent = data.failed_cases || 0;
-        
-        // 更新执行状态
-        const statusDiv = document.getElementById('executionStatus');
-        const stopBtn = document.getElementById('stopExecutionBtn');
-        
-        if (data.status === 'completed') {
-            isExecuting = false;
-            clearTimeout(updateTimer);
-            
-            statusDiv.className = 'alert alert-success';
-            statusDiv.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-check-circle me-2"></i>
-                    <span>测试执行完成！</span>
-                </div>
-            `;
-            stopBtn.style.display = 'none';
-            
-            // 显示查看报告按钮
-            const actionsDiv = document.getElementById('executionActions');
-            actionsDiv.innerHTML += `
-                <a href="/tasks/${taskId}/report" class="btn btn-success">
-                    <i class="bi bi-file-text me-1"></i> 查看报告
-                </a>
-            `;
-            
-        } else if (data.status === 'failed') {
-            isExecuting = false;
-            clearTimeout(updateTimer);
-            
-            statusDiv.className = 'alert alert-danger';
-            statusDiv.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-exclamation-triangle me-2"></i>
-                    <span>测试执行失败！</span>
-                </div>
-            `;
-            stopBtn.style.display = 'none';
-            
-        } else if (data.status === 'executing') {
-            stopBtn.style.display = 'inline-block';
-        }
-        
-        // 更新执行日志
-        const logDiv = document.getElementById('executionLog');
-        let logContent = '';
-        
-        if (data.case_details && data.case_details.length > 0) {
-            data.case_details.forEach(detail => {
-                let status;
-                if (detail.status === 'pending') {
-                    status = '⏳ 待执行';
-                } else if (detail.status === 'executing') {
-                    status = '🔄 执行中';
-                } else if (detail.status === 'completed') {
-                    status = detail.is_passed ? '✅ 通过' : '❌ 失败';
-                } else {
-                    status = '⚠️ 未知状态';
-                }
+    function loadTestCases() {
+        fetch(`/api/tasks/${taskId}/test-cases`)
+            .then(response => response.json())
+            .then(data => {
+                cases = data.test_cases || [];
+                renderTestCases();
                 
-                logContent += `[${detail.case_id}] ${detail.name} - ${status}\n`;
-                if (detail.result_analysis) {
-                    logContent += `分析结果: ${detail.result_analysis}\n`;
-                }
-                logContent += '\n';
+                // 更新统计数据
+                document.getElementById('totalCases').textContent = cases.length;
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                showNotification('danger', `获取测试用例失败: ${error.message}`);
             });
+    }
+    
+    function renderTestCases() {
+        const tbody = document.getElementById('casesTableBody');
+        tbody.innerHTML = '';
+        
+        if (cases.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-4">
+                        <i class="bi bi-inbox text-muted"></i>
+                        <span class="ms-2">暂无测试用例</span>
+                    </td>
+                </tr>
+            `;
+            return;
         }
         
-        logDiv.textContent = logContent;
-        logDiv.scrollTop = logDiv.scrollHeight;
+        cases.forEach((testCase, index) => {
+            const statusClass = {
+                'pending': 'secondary',
+                'executing': 'primary',
+                'passed': 'success',
+                'failed': 'danger'
+            }[testCase.status] || 'secondary';
+            
+            const statusText = getStatusText(testCase.status);
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>
+                        <span class="small text-muted">${testCase.case_id.substring(0, 8)}</span>
+                    </td>
+                    <td>${testCase.name || '未命名测试用例'}</td>
+                    <td>
+                        <small class="text-muted">${testCase.test_data || '未设置'}</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-${statusClass}">${statusText}</span>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" 
+                                    onclick="executeCase('${testCase.case_id}')"
+                                    ${testCase.status === 'executing' ? 'disabled' : ''}>
+                                <i class="bi bi-play"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-info" 
+                                    onclick="viewResult('${testCase.case_id}')"
+                                    ${testCase.status !== 'passed' && testCase.status !== 'failed' ? 'disabled' : ''}>
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+    
+    function startExecution() {
+        if (!confirm('确定要开始执行测试任务吗？')) return;
+        
+        // 更新UI
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').style.display = 'inline-block';
+        document.getElementById('executionLog').innerHTML = '<div class="text-muted">准备开始执行...</div>';
+        
+        // 发送开始执行请求
+        fetch(`/api/tasks/${taskId}/execute`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', '测试任务执行已开始');
+                
+                // 开始轮询执行状态
+                startStatusPolling();
+            } else {
+                showNotification('danger', data.message || '启动执行失败');
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error('启动执行失败:', error);
+            showNotification('danger', `启动执行失败: ${error.message}`);
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').style.display = 'none';
+        });
     }
     
     function stopExecution() {
+        if (!confirm('确定要停止当前执行的测试任务吗？')) return;
+        
+        document.getElementById('stopBtn').disabled = true;
+        
         fetch(`/api/tasks/${taskId}/stop`, {
             method: 'POST'
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showNotification('success', '已发送停止执行命令');
+                showNotification('success', '测试任务已停止');
             } else {
                 showNotification('danger', data.message || '停止执行失败');
             }
+            document.getElementById('stopBtn').disabled = false;
         })
         .catch(error => {
             console.error('停止执行失败:', error);
             showNotification('danger', `停止执行失败: ${error.message}`);
+            document.getElementById('stopBtn').disabled = false;
         });
+    }
+    
+    function executeCase(caseId) {
+        if (!confirm('确定要单独执行这个测试用例吗？')) return;
+        
+        const caseRow = document.querySelector(`tr[data-case-id="${caseId}"]`);
+        if (caseRow) {
+            const statusCell = caseRow.querySelector('td:nth-child(5)');
+            statusCell.innerHTML = '<span class="badge bg-primary">执行中</span>';
+            
+            const actionCell = caseRow.querySelector('td:nth-child(6)');
+            const buttons = actionCell.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+        }
+        
+        fetch(`/api/testcases/${caseId}/execute`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', '测试用例执行已开始');
+                // 开始轮询状态以更新该用例的状态
+                startStatusPolling();
+            } else {
+                showNotification('danger', data.message || '执行用例失败');
+                // 恢复UI状态
+                if (caseRow) {
+                    const statusCell = caseRow.querySelector('td:nth-child(5)');
+                    statusCell.innerHTML = '<span class="badge bg-secondary">待执行</span>';
+                    
+                    const actionCell = caseRow.querySelector('td:nth-child(6)');
+                    const buttons = actionCell.querySelectorAll('button');
+                    buttons.forEach(btn => btn.disabled = false);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('执行用例失败:', error);
+            showNotification('danger', `执行用例失败: ${error.message}`);
+        });
+    }
+    
+    function viewResult(caseId) {
+        // 查找用例数据
+        const testCase = cases.find(c => c.case_id === caseId);
+        if (!testCase) return;
+        
+        // 获取用例执行结果
+        fetch(`/api/testcases/${caseId}/result`)
+            .then(response => response.json())
+            .then(data => {
+                // 填充模态框内容
+                document.getElementById('resultCaseName').textContent = testCase.name || '未命名测试用例';
+                document.getElementById('resultCaseId').textContent = testCase.case_id;
+                document.getElementById('resultTestData').textContent = testCase.test_data || '未设置';
+                
+                const statusClass = testCase.status === 'passed' ? 'success' : 'danger';
+                const statusText = testCase.status === 'passed' ? '通过 ✅' : '失败 ❌';
+                document.getElementById('resultStatus').innerHTML = `<span class="badge bg-${statusClass}">${statusText}</span>`;
+                
+                document.getElementById('resultAnalysis').innerHTML = data.result_analysis || '<span class="text-muted">暂无分析结果</span>';
+                document.getElementById('resultLog').textContent = data.execution_log || '暂无执行日志';
+                
+                // 显示模态框
+                resultModal.show();
+            })
+            .catch(error => {
+                console.error('获取用例结果失败:', error);
+                showNotification('danger', `获取用例结果失败: ${error.message}`);
+            });
+    }
+    
+    function startStatusPolling() {
+        // 先清除可能存在的轮询
+        if (executionInterval) {
+            clearInterval(executionInterval);
+        }
+        
+        // 立即更新一次状态
+        updateExecutionStatus();
+        
+        // 设置定时轮询
+        executionInterval = setInterval(updateExecutionStatus, 3000);
+    }
+    
+    function updateExecutionStatus() {
+        fetch(`/api/tasks/${taskId}/status`)
+            .then(response => response.json())
+            .then(data => {
+                // 更新执行状态
+                updateStatusDisplay(data);
+                
+                // 如果执行已完成或失败，停止轮询
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(executionInterval);
+                    executionInterval = null;
+                    
+                    // 恢复UI状态
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').style.display = 'none';
+                    
+                    // 显示完成通知
+                    const statusText = data.status === 'completed' ? '完成' : '失败';
+                    showNotification(data.status === 'completed' ? 'success' : 'danger', `测试任务执行${statusText}`);
+                }
+                
+                // 更新测试用例状态
+                if (data.case_details && data.case_details.length > 0) {
+                    // 更新本地用例数据
+                    data.case_details.forEach(detail => {
+                        const caseIndex = cases.findIndex(c => c.case_id === detail.case_id);
+                        if (caseIndex >= 0) {
+                            cases[caseIndex].status = detail.status;
+                            cases[caseIndex].is_passed = detail.is_passed;
+                        }
+                    });
+                    
+                    // 更新UI
+                    renderTestCases();
+                    
+                    // 更新执行日志
+                    updateExecutionLog(data.case_details);
+                }
+            })
+            .catch(error => {
+                console.error('获取执行状态失败:', error);
+                
+                // 轮询失败超过一定次数后停止轮询
+                if (this.errorCount >= 5) {
+                    clearInterval(executionInterval);
+                    executionInterval = null;
+                    showNotification('danger', '无法获取执行状态，已停止更新');
+                    
+                    // 恢复UI状态
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').style.display = 'none';
+                }
+            });
+    }
+    
+    function updateStatusDisplay(data) {
+        // 更新状态标签
+        const statusEl = document.getElementById('executionStatus');
+        const statusClass = {
+            'pending': 'secondary',
+            'preparing': 'info',
+            'executing': 'primary',
+            'completed': 'success',
+            'failed': 'danger'
+        }[data.status] || 'secondary';
+        statusEl.className = `badge bg-${statusClass}`;
+        statusEl.textContent = getTaskStatusText(data.status);
+        
+        // 更新进度条
+        const progress = document.getElementById('executionProgress');
+        progress.style.width = `${data.progress}%`;
+        progress.className = `progress-bar bg-${statusClass}`;
+        
+        // 更新时间信息
+        if (data.start_time) {
+            document.getElementById('startTime').textContent = formatDateTime(data.start_time);
+        }
+        
+        if (data.duration !== undefined) {
+            document.getElementById('duration').textContent = formatDuration(data.duration);
+        }
+        
+        // 更新统计数字
+        document.getElementById('executedCases').textContent = data.executed_count || 0;
+        document.getElementById('passedCases').textContent = data.passed_count || 0;
+        document.getElementById('failedCases').textContent = data.failed_count || 0;
+    }
+    
+    function updateExecutionLog(caseDetails) {
+        const logDiv = document.getElementById('executionLog');
+        
+        // 处理新的日志条目
+        caseDetails.forEach(detail => {
+            if (detail.status === 'pending') {
+                logDiv.innerHTML += `<div class="text-muted">⏳ 用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'}) 待执行</div>`;
+            } else if (detail.status === 'executing') {
+                logDiv.innerHTML += `<div class="text-primary">🔄 正在执行用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'})</div>`;
+            } else if (detail.status === 'completed') {
+                const result = detail.is_passed ? '✅ 通过' : '❌ 失败';
+                const color = detail.is_passed ? 'text-success' : 'text-danger';
+                logDiv.innerHTML += `<div class="${color}">用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'}) ${result}</div>`;
+                
+                if (detail.result_analysis) {
+                    logDiv.innerHTML += `<div class="text-muted ps-3 small">分析结果: ${detail.result_analysis}</div>`;
+                }
+            }
+        });
+        
+        // 滚动到底部
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+    
+    function getStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function getTaskStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '执行失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function formatDateTime(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+    
+    function formatDuration(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}分${remainingSeconds}秒`;
     }
     
     function showNotification(type, message) {
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alertDiv.style.zIndex = '9999';
         alertDiv.innerHTML = `
             ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         
-        // 在页面顶部显示通知
-        const container = document.querySelector('.container');
-        container.insertBefore(alertDiv, container.firstChild);
+        document.body.appendChild(alertDiv);
         
-        // 自动关闭通知
         setTimeout(() => {
             alertDiv.classList.remove('show');
             setTimeout(() => alertDiv.remove(), 300);
-        }, 5000);
+        }, 3000);
     }
 </script>
 {% endblock %} 

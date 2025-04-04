@@ -1,41 +1,73 @@
 {% extends "base.html" %}
 
-{% block page_title %}测试用例管理{% endblock %}
+{% block page_title %}用例管理{% endblock %}
 
 {% block page_actions %}
-<div class="btn-group" id="testCasesActions">
-    {% if document_id %}
-    <a href="/documents/{{ document_id }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> 返回文档
-    </a>
-    {% endif %}
-    <a href="/testcases/create{% if document_id %}?document_id={{ document_id }}{% endif %}" class="btn btn-primary">
-        <i class="bi bi-plus-lg me-1"></i> 创建测试用例
-    </a>
-    <button id="batchDataBtn" class="btn btn-outline-primary" disabled>
+<div class="btn-group">
+    <button type="button" class="btn btn-outline-primary" id="batchDataBtn" disabled>
         <i class="bi bi-image me-1"></i> 批量设置测试数据
     </button>
-    <button id="selectImagesBtn" class="btn btn-outline-info" style="display:none;">
+    <button type="button" class="btn btn-outline-info" id="selectImagesBtn" disabled>
         <i class="bi bi-magic me-1"></i> 智能分配测试数据
     </button>
 </div>
 {% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-body">
-                    <div id="testCasesContainer">
-                        <div class="text-center my-4">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">加载中...</span>
-                            </div>
-                            <p class="mt-2">加载测试用例...</p>
-                        </div>
-                    </div>
-                </div>
+<div class="container-fluid">
+    <!-- 搜索和筛选 -->
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <div class="input-group">
+                <input type="text" class="form-control" id="searchInput" placeholder="搜索用例...">
+                <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <select class="form-select" id="statusFilter">
+                <option value="">所有状态</option>
+                <option value="pending">待执行</option>
+                <option value="executing">执行中</option>
+                <option value="passed">通过</option>
+                <option value="failed">失败</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 用例列表 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th width="40px">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="selectAllCases">
+                                </div>
+                            </th>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>测试目的</th>
+                            <th>测试数据</th>
+                            <th>状态</th>
+                            <th>所属任务</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testCasesTableBody">
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                                    <span class="visually-hidden">加载中...</span>
+                                </div>
+                                <span class="ms-2">加载测试用例...</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -65,44 +97,93 @@
         </div>
     </div>
 </div>
+
+<!-- 编辑用例模态框 -->
+<div class="modal fade" id="editCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑测试用例</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCaseForm">
+                    <input type="hidden" id="editCaseId">
+                    <div class="mb-3">
+                        <label for="editCaseName" class="form-label">用例名称</label>
+                        <input type="text" class="form-control" id="editCaseName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCasePurpose" class="form-label">测试目的</label>
+                        <textarea class="form-control" id="editCasePurpose" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCaseData" class="form-label">测试数据</label>
+                        <input type="text" class="form-control" id="editCaseData">
+                        <div class="form-text">输入测试数据文件路径</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveCase()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const documentId = '{{ document_id }}';
-    let taskId = null;
     let selectedCases = new Set();
+    let testCases = [];
     let batchDataModal = null;
+    let editCaseModal = null;
     
     document.addEventListener('DOMContentLoaded', function() {
-        loadTestCases();
-        
         // 初始化模态框
         batchDataModal = new bootstrap.Modal(document.getElementById('batchDataModal'));
+        editCaseModal = new bootstrap.Modal(document.getElementById('editCaseModal'));
         
-        // 添加批量设置测试数据按钮点击事件
+        // 加载测试用例
+        loadTestCases();
+        
+        // 绑定搜索事件
+        document.getElementById('searchBtn').addEventListener('click', filterTestCases);
+        document.getElementById('searchInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') filterTestCases();
+        });
+        
+        // 绑定状态筛选事件
+        document.getElementById('statusFilter').addEventListener('change', filterTestCases);
+        
+        // 绑定全选事件
+        document.getElementById('selectAllCases').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.case-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = this.checked;
+                toggleCaseSelection(cb.value, cb.checked);
+            });
+            updateBatchButtons();
+        });
+        
+        // 绑定批量设置测试数据按钮事件
         document.getElementById('batchDataBtn').addEventListener('click', function() {
             if (selectedCases.size > 0) {
-                // 显示模态框
                 batchDataModal.show();
             }
         });
         
-        // 添加确认设置测试数据按钮点击事件
+        // 绑定确认批量设置事件
         document.getElementById('confirmBatchData').addEventListener('click', function() {
             const testDataPath = document.getElementById('testDataPath').value.trim();
             if (!testDataPath) {
                 showNotification('warning', '请输入测试数据路径');
                 return;
             }
-
-            // 关闭模态框
+            
             batchDataModal.hide();
-
-            // 显示加载提示
-            showNotification('info', `正在为 ${selectedCases.size} 个测试用例设置数据...`);
-
-            // 调用API设置测试数据
+            
             fetch('/api/testcases/batch-set-data', {
                 method: 'POST',
                 headers: {
@@ -115,10 +196,8 @@
             })
             .then(response => response.json())
             .then(data => {
-                showNotification('success', data.message || '测试数据设置成功');
-                // 清空输入框
+                showNotification('success', '测试数据设置成功');
                 document.getElementById('testDataPath').value = '';
-                // 重新加载测试用例列表
                 loadTestCases();
             })
             .catch(error => {
@@ -127,433 +206,264 @@
             });
         });
         
-        // 添加智能分配测试数据按钮点击事件
+        // 绑定智能分配测试数据按钮事件
         document.getElementById('selectImagesBtn').addEventListener('click', function() {
-            if (taskId) {
-                selectImages(taskId);
-            } else {
-                showNotification('warning', '无法确定关联的任务ID，请先获取任务ID');
-                getTaskIdForDocument();
+            if (selectedCases.size === 0) {
+                showNotification('warning', '请先选择测试用例');
+                return;
             }
+            
+            if (!confirm('确定要智能分配测试数据吗？这将根据任务的数据集自动为所有测试用例分配合适的图片。')) {
+                return;
+            }
+            
+            const btn = this;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 处理中...';
+            
+            showNotification('info', '正在分配测试数据，请稍候...');
+            
+            fetch('/api/testcases/smart-assign-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    case_ids: Array.from(selectedCases)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showNotification('success', '测试数据分配成功');
+                loadTestCases();
+            })
+            .catch(error => {
+                console.error('分配测试数据失败:', error);
+                showNotification('danger', `分配测试数据失败: ${error.message}`);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
         });
     });
     
     function loadTestCases() {
-        const url = '/api/tasks';
-        console.log('开始加载测试用例...');
-        showLoading();
-        
-        fetch(url)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                console.log('成功获取任务列表');
-                return response.json();
-            })
+        fetch('/api/testcases')
+            .then(response => response.json())
             .then(data => {
-                console.log('任务数据:', data);
-                const tasks = data.tasks || [];
-                if (tasks.length === 0) {
-                    hideLoading();
-                    document.getElementById('testCasesContainer').innerHTML = `
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>没有测试用例，可点击"创建测试用例"按钮添加。
-                        </div>
-                    `;
-                    return;
-                }
-                
-                // 获取每个任务的测试用例
-                Promise.all(tasks.map(task => {
-                    console.log(`获取任务 ${task.task_id} 的测试用例`);
-                    return fetch(`/api/tasks/${task.task_id}/test-data`)
-                        .then(response => {
-                            if (!response.ok) {
-                                throw new Error(`获取任务 ${task.task_id} 的测试用例失败: ${response.status}`);
-                            }
-                            return response.json();
-                        })
-                        .then(caseData => ({
-                            task: task,
-                            testCases: caseData.test_cases || []
-                        }))
-                        .catch(error => {
-                            console.error(`获取任务 ${task.task_id} 的测试用例失败:`, error);
-                            return {
-                                task: task,
-                                testCases: [],
-                                error: error.message
-                            };
-                        });
-                }))
-                .then(tasksWithCases => {
-                    console.log('所有任务的测试用例数据:', tasksWithCases);
-                    hideLoading();
-                    
-                    if (tasksWithCases.some(t => t.error)) {
-                        const errors = tasksWithCases
-                            .filter(t => t.error)
-                            .map(t => `任务 ${t.task.task_id}: ${t.error}`)
-                            .join('\n');
-                        showNotification('warning', `部分任务的测试用例加载失败:\n${errors}`);
-                    }
-                    
-                    renderTasksAndCases(tasksWithCases);
-                })
-                .catch(error => {
-                    console.error('获取测试用例数据失败:', error);
-                    hideLoading();
-                    showError(document.getElementById('testCasesContainer'), `加载测试用例数据失败: ${error.message}`);
-                });
+                testCases = data.test_cases || [];
+                renderTestCases(testCases);
             })
             .catch(error => {
-                console.error('获取任务列表失败:', error);
-                hideLoading();
-                showError(document.getElementById('testCasesContainer'), `加载任务列表失败: ${error.message}`);
+                console.error('获取测试用例失败:', error);
+                showNotification('danger', `获取测试用例失败: ${error.message}`);
             });
     }
     
-    function renderTasksAndCases(tasksWithCases) {
-        console.log('开始渲染任务和测试用例:', tasksWithCases);
-        const container = document.getElementById('testCasesContainer');
+    function renderTestCases(casesToRender) {
+        const tbody = document.getElementById('testCasesTableBody');
+        tbody.innerHTML = '';
         
-        if (!tasksWithCases || tasksWithCases.length === 0) {
-            console.log('没有任务或测试用例数据');
-            container.innerHTML = `
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle me-2"></i>没有测试用例，可点击"创建测试用例"按钮添加。
-                </div>
+        if (casesToRender.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-4">
+                        <i class="bi bi-inbox text-muted"></i>
+                        <span class="ms-2">暂无测试用例</span>
+                    </td>
+                </tr>
             `;
             return;
         }
         
-        container.innerHTML = `
-            <div class="accordion" id="tasksAccordion">
-                ${tasksWithCases.map((taskData, index) => {
-                    console.log(`渲染任务 ${index + 1}/${tasksWithCases.length}:`, taskData);
-                    return `
-                        <div class="accordion-item">
-                            <h2 class="accordion-header">
-                                <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
-                                        data-bs-toggle="collapse" data-bs-target="#task-${taskData.task.task_id}">
-                                    <div class="d-flex align-items-center justify-content-between w-100 me-3">
-                                        <div>
-                                            <span class="badge bg-secondary me-2">${taskData.task.task_id}</span>
-                                            <span class="badge bg-${getTaskStatusBadge(taskData.task.status)}">${taskData.task.status}</span>
-                                        </div>
-                                        <div class="ms-3">
-                                            <small class="text-muted">测试用例: ${taskData.testCases.length}</small>
-                                        </div>
-                                    </div>
-                                </button>
-                            </h2>
-                            <div id="task-${taskData.task.task_id}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}"
-                                 data-bs-parent="#tasksAccordion">
-                                <div class="accordion-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-hover mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th style="width: 5%;"><input type="checkbox" class="task-select-all" 
-                                                        data-task-id="${taskData.task.task_id}"></th>
-                                                    <th style="width: 15%;">ID</th>
-                                                    <th style="width: 20%;">名称</th>
-                                                    <th style="width: 30%;">测试目的</th>
-                                                    <th style="width: 15%;">状态</th>
-                                                    <th style="width: 15%;">操作</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                ${taskData.testCases.map(testCase => {
-                                                    console.log('渲染测试用例:', testCase);
-                                                    return `
-                                                        <tr>
-                                                            <td>
-                                                                <input type="checkbox" class="case-checkbox" 
-                                                                       data-task-id="${taskData.task.task_id}"
-                                                                       data-case-id="${testCase.case_id}">
-                                                            </td>
-                                                            <td>
-                                                                <span class="badge bg-light text-dark">${testCase.case_id}</span>
-                                                            </td>
-                                                            <td>${testCase.name || '未命名测试用例'}</td>
-                                                            <td>${truncateText(testCase.purpose, 50)}</td>
-                                                            <td>
-                                                                <span class="badge ${getCaseStatusBadge(testCase.status)}">
-                                                                    ${getCaseStatusText(testCase.status, testCase.is_passed)}
-                                                                </span>
-                                                            </td>
-                                                            <td>
-                                                                <div class="btn-group btn-group-sm">
-                                                                    <a href="/testcases/${testCase.case_id}" class="btn btn-outline-primary">
-                                                                        <i class="bi bi-eye"></i>
-                                                                    </a>
-                                                                    <a href="/testcases/${testCase.case_id}/edit" class="btn btn-outline-secondary">
-                                                                        <i class="bi bi-pencil"></i>
-                                                                    </a>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    `;
-                                                }).join('')}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
+        casesToRender.forEach(testCase => {
+            const statusClass = {
+                'pending': 'secondary',
+                'executing': 'primary',
+                'passed': 'success',
+                'failed': 'danger'
+            }[testCase.status] || 'secondary';
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td>
+                        <div class="form-check">
+                            <input class="form-check-input case-checkbox" type="checkbox" 
+                                   value="${testCase.case_id}"
+                                   ${selectedCases.has(testCase.case_id) ? 'checked' : ''}>
                         </div>
-                    `;
-                }).join('')}
-            </div>
-        `;
-        
-        console.log('完成渲染任务和测试用例');
-        
-        // 绑定事件处理器
-        bindEventHandlers();
-    }
-    
-    function bindEventHandlers() {
-        console.log('开始绑定事件处理器');
-        
-        // 绑定任务级别的全选/取消全选事件
-        document.querySelectorAll('.task-select-all').forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                const taskId = this.dataset.taskId;
-                console.log(`任务 ${taskId} 的全选框状态改变:`, this.checked);
-                
-                const taskCheckboxes = document.querySelectorAll(`.case-checkbox[data-task-id="${taskId}"]`);
-                taskCheckboxes.forEach(caseCheckbox => {
-                    caseCheckbox.checked = this.checked;
-                    const caseId = caseCheckbox.dataset.caseId;
-                    if (this.checked) {
-                        selectedCases.add(caseId);
-                    } else {
-                        selectedCases.delete(caseId);
-                    }
-                });
-                updateBatchDataButton();
-            });
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-dark">
+                            ${testCase.case_id.substring(0, 8)}
+                        </span>
+                    </td>
+                    <td>${testCase.name || '未命名测试用例'}</td>
+                    <td>${testCase.purpose || '-'}</td>
+                    <td>
+                        <small class="text-muted">
+                            ${testCase.test_data || '未设置'}
+                        </small>
+                    </td>
+                    <td>
+                        <span class="badge bg-${statusClass}">
+                            ${getStatusText(testCase.status)}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/tasks/${testCase.task_id}" class="text-decoration-none">
+                            ${testCase.task_id.substring(0, 8)}
+                        </a>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" 
+                                    onclick="editCase('${testCase.case_id}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" 
+                                    onclick="deleteCase('${testCase.case_id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
         });
         
-        // 绑定单个测试用例复选框事件
+        // 绑定复选框事件
         document.querySelectorAll('.case-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', function() {
-                const caseId = this.dataset.caseId;
-                const taskId = this.dataset.taskId;
-                console.log(`测试用例 ${caseId} 的复选框状态改变:`, this.checked);
-                
-                if (this.checked) {
-                    selectedCases.add(caseId);
-                } else {
-                    selectedCases.delete(caseId);
-                }
-                
-                // 更新任务级别的全选框状态
-                const taskCheckboxes = document.querySelectorAll(`.case-checkbox[data-task-id="${taskId}"]`);
-                const taskSelectAll = document.querySelector(`.task-select-all[data-task-id="${taskId}"]`);
-                const allChecked = Array.from(taskCheckboxes).every(cb => cb.checked);
-                const someChecked = Array.from(taskCheckboxes).some(cb => cb.checked);
-                taskSelectAll.checked = allChecked;
-                taskSelectAll.indeterminate = someChecked && !allChecked;
-                
-                updateBatchDataButton();
+                toggleCaseSelection(this.value, this.checked);
+                updateBatchButtons();
             });
         });
+    }
+    
+    function filterTestCases() {
+        const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+        const status = document.getElementById('statusFilter').value;
         
-        console.log('事件处理器绑定完成');
-    }
-    
-    function updateBatchDataButton() {
-        const batchDataBtn = document.getElementById('batchDataBtn');
-        batchDataBtn.disabled = selectedCases.size === 0;
-    }
-    
-    function getTaskStatusBadge(status) {
-        const statusMap = {
-            'created': 'info',
-            'pending': 'warning',
-            'running': 'primary',
-            'completed': 'success',
-            'failed': 'danger'
-        };
-        return statusMap[status] || 'secondary';
-    }
-    
-    function getCaseStatusBadge(status) {
-        switch (status) {
-            case 'pending':
-                return 'bg-secondary';
-            case 'running':
-                return 'bg-primary';
-            case 'completed':
-                return 'bg-success';
-            case 'failed':
-                return 'bg-danger';
-            default:
-                return 'bg-secondary';
-        }
-    }
-    
-    function getCaseStatusText(status, is_passed) {
-        switch (status) {
-            case 'pending':
-                return '待执行';
-            case 'running':
-                return '执行中';
-            case 'completed':
-                return is_passed ? '测试通过' : '测试失败';
-            case 'failed':
-                return '执行失败';
-            default:
-                return '待执行';
-        }
-    }
-    
-    function truncateText(text, maxLength) {
-        if (!text) return '';
-        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-    }
-    
-    // 获取文档对应的任务ID
-    function getTaskIdForDocument() {
-        if (!documentId) {
-            showNotification('warning', '无法获取关联的任务ID，未指定文档ID');
-            return;
-        }
-        
-        fetch(`/api/tasks?document_id=${documentId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data && data.tasks && data.tasks.length > 0) {
-                    taskId = data.tasks[0].task_id;
-                    showNotification('success', `已获取任务ID: ${taskId}`);
-                    document.getElementById('selectImagesBtn').style.display = 'inline-block';
-                } else {
-                    showNotification('warning', '未找到与文档关联的任务');
-                }
-            })
-            .catch(error => {
-                console.error('获取任务ID失败:', error);
-                showNotification('danger', `获取任务ID失败: ${error.message}`);
-            });
-    }
-    
-    // 智能分配测试数据
-    function selectImages(taskId) {
-        if (!confirm('确定要智能分配测试数据吗？这将根据任务的数据集自动为测试用例分配合适的图片。')) {
-            return;
-        }
-        
-        // 显示加载状态
-        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在分配测试数据，请稍候...');
-        
-        // 发送API请求
-        fetch(`/api/tasks/${taskId}/select-images`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({})
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('智能分配测试数据结果:', data);
+        const filteredCases = testCases.filter(testCase => {
+            const matchesKeyword = !keyword || 
+                testCase.case_id.toLowerCase().includes(keyword) ||
+                (testCase.name && testCase.name.toLowerCase().includes(keyword)) ||
+                (testCase.purpose && testCase.purpose.toLowerCase().includes(keyword));
+                
+            const matchesStatus = !status || testCase.status === status;
             
-            if (data.success) {
-                // 成功分配测试数据
-                let examplesHtml = '';
-                if (data.image_examples && data.image_examples.length > 0) {
-                    examplesHtml = '<ul class="mt-2 mb-0">' + 
-                        data.image_examples.map(([caseId, imagePath]) => 
-                            `<li><small>${caseId.substring(0, 8)}... => ${imagePath}</small></li>`
-                        ).join('') + 
-                    '</ul>';
-                }
-                
-                showNotification('success', `
-                    <div>
-                        <div><i class="bi bi-check-circle me-2"></i>成功为 ${data.updated_count} 个测试用例分配测试数据！</div>
-                        ${examplesHtml}
-                    </div>
-                `);
-                
-                // 2秒后刷新页面
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-            } else {
-                // 分配失败
-                let errorsHtml = '';
-                if (data.errors && data.errors.length > 0) {
-                    errorsHtml = '<ul class="mt-2 mb-0">' + 
-                        data.errors.map(err => `<li><small>${err}</small></li>`).join('') + 
-                    '</ul>';
-                }
-                
-                showNotification('danger', `
-                    <div>
-                        <div><i class="bi bi-exclamation-triangle me-2"></i>分配测试数据失败：${data.message}</div>
-                        ${errorsHtml}
-                    </div>
-                `);
-            }
+            return matchesKeyword && matchesStatus;
+        });
+        
+        renderTestCases(filteredCases);
+    }
+    
+    function toggleCaseSelection(caseId, isSelected) {
+        if (isSelected) {
+            selectedCases.add(caseId);
+        } else {
+            selectedCases.delete(caseId);
+        }
+    }
+    
+    function updateBatchButtons() {
+        const batchDataBtn = document.getElementById('batchDataBtn');
+        const selectImagesBtn = document.getElementById('selectImagesBtn');
+        
+        batchDataBtn.disabled = selectedCases.size === 0;
+        selectImagesBtn.disabled = selectedCases.size === 0;
+    }
+    
+    function editCase(caseId) {
+        const testCase = testCases.find(c => c.case_id === caseId);
+        if (!testCase) return;
+        
+        document.getElementById('editCaseId').value = caseId;
+        document.getElementById('editCaseName').value = testCase.name || '';
+        document.getElementById('editCasePurpose').value = testCase.purpose || '';
+        document.getElementById('editCaseData').value = testCase.test_data || '';
+        
+        editCaseModal.show();
+    }
+    
+    function saveCase() {
+        const caseId = document.getElementById('editCaseId').value;
+        const name = document.getElementById('editCaseName').value.trim();
+        const purpose = document.getElementById('editCasePurpose').value.trim();
+        const testData = document.getElementById('editCaseData').value.trim();
+        
+        if (!name) {
+            showNotification('warning', '请输入用例名称');
+            return;
+        }
+        
+        fetch(`/api/testcases/${caseId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: name,
+                purpose: purpose,
+                test_data: testData
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            editCaseModal.hide();
+            showNotification('success', '测试用例已更新');
+            loadTestCases();
         })
         .catch(error => {
-            console.error('智能分配测试数据失败:', error);
-            showNotification('danger', `智能分配测试数据失败: ${error.message}`);
+            console.error('更新测试用例失败:', error);
+            showNotification('danger', `更新测试用例失败: ${error.message}`);
         });
     }
     
-    // 显示通知消息
+    function deleteCase(caseId) {
+        if (!confirm('确定要删除这个测试用例吗？此操作不可恢复。')) return;
+        
+        fetch(`/api/testcases/${caseId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            showNotification('success', '测试用例已删除');
+            loadTestCases();
+        })
+        .catch(error => {
+            console.error('删除测试用例失败:', error);
+            showNotification('danger', `删除测试用例失败: ${error.message}`);
+        });
+    }
+    
+    function getStatusText(status) {
+        const statusMap = {
+            'pending': '待执行',
+            'executing': '执行中',
+            'passed': '通过',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
     function showNotification(type, message) {
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alertDiv.style.zIndex = '9999';
         alertDiv.innerHTML = `
             ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         
-        // 在页面顶部显示通知
-        const container = document.querySelector('.container');
-        container.insertBefore(alertDiv, container.firstChild);
+        document.body.appendChild(alertDiv);
         
-        // 自动关闭通知
         setTimeout(() => {
             alertDiv.classList.remove('show');
             setTimeout(() => alertDiv.remove(), 300);
-        }, 5000);
-    }
-    
-    // 显示错误消息
-    function showError(container, message) {
-        container.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle me-2"></i> ${message}
-            </div>
-        `;
-    }
-
-    function showLoading() {
-        document.getElementById('testCasesContainer').innerHTML = `
-            <div class="text-center my-4">
-                <div class="spinner-border" role="status">
-                    <span class="visually-hidden">加载中...</span>
-                </div>
-                <p class="mt-2">加载测试用例...</p>
-            </div>
-        `;
-    }
-
-    function hideLoading() {
-        // 不需要做任何事情，因为内容会被新的内容替换
+        }, 3000);
     }
 </script>
 {% endblock %} 

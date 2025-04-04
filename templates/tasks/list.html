@@ -2,21 +2,166 @@
 
 {% block page_title %}任务管理{% endblock %}
 
+{% block page_actions %}
+<div class="btn-group">
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+        <i class="bi bi-plus-lg me-1"></i> 创建任务
+    </button>
+</div>
+{% endblock %}
+
 {% block content %}
-<div class="container">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-body">
-                    <div id="tasksContainer">
-                        <div class="text-center my-4">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">加载中...</span>
-                            </div>
-                            <p class="mt-2">加载任务列表...</p>
-                        </div>
+<div class="container-fluid">
+    <!-- 任务列表 -->
+    <div class="card">
+        <div class="card-body">
+            <!-- 搜索和筛选 -->
+            <div class="row mb-3">
+                <div class="col-md-8">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="搜索任务...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchBtn">
+                            <i class="bi bi-search"></i>
+                        </button>
                     </div>
                 </div>
+                <div class="col-md-4">
+                    <select class="form-select" id="statusFilter">
+                        <option value="">所有状态</option>
+                        <option value="created">已创建</option>
+                        <option value="preparing">准备中</option>
+                        <option value="executing">执行中</option>
+                        <option value="completed">已完成</option>
+                        <option value="failed">失败</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 任务表格 -->
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>任务ID</th>
+                            <th>文档</th>
+                            <th>算法镜像</th>
+                            <th>数据集</th>
+                            <th>用例数</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasksTableBody">
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                                    <span class="visually-hidden">加载中...</span>
+                                </div>
+                                <span class="ms-2">加载任务列表...</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建任务模态框 -->
+<div class="modal fade" id="createTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">创建新任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createTaskForm">
+                    <!-- 步骤指示器 -->
+                    <div class="row mb-4">
+                        <div class="col">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: 33%">步骤 1/3</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 步骤1：上传文档 -->
+                    <div id="step1" class="step-content">
+                        <h6 class="mb-3">第一步：上传需求文档</h6>
+                        <div class="mb-3">
+                            <label for="documentFile" class="form-label">选择文档文件</label>
+                            <input type="file" class="form-control" id="documentFile" accept=".pdf,.doc,.docx">
+                            <div class="form-text">支持 PDF、Word 格式的文档</div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-primary" onclick="nextStep(2)">下一步</button>
+                        </div>
+                    </div>
+
+                    <!-- 步骤2：配置数据集 -->
+                    <div id="step2" class="step-content" style="display: none;">
+                        <h6 class="mb-3">第二步：配置数据集</h6>
+                        <div class="mb-3">
+                            <label for="datasetUrl" class="form-label">数据集URL</label>
+                            <input type="text" class="form-control" id="datasetUrl" placeholder="输入数据集的URL地址">
+                            <div class="form-text">请确保数据集可以被系统访问</div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="prevStep(1)">上一步</button>
+                            <button type="button" class="btn btn-primary" onclick="nextStep(3)">下一步</button>
+                        </div>
+                    </div>
+
+                    <!-- 步骤3：配置算法镜像 -->
+                    <div id="step3" class="step-content" style="display: none;">
+                        <h6 class="mb-3">第三步：配置算法镜像</h6>
+                        <div class="mb-3">
+                            <label for="algorithmImage" class="form-label">算法镜像</label>
+                            <input type="text" class="form-control" id="algorithmImage" placeholder="输入算法镜像名称">
+                            <div class="form-text">例如：registry.example.com/algorithm:latest</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="containerConfig" class="form-label">容器配置</label>
+                            <textarea class="form-control" id="containerConfig" rows="3" placeholder="输入容器配置（JSON格式）"></textarea>
+                            <div class="form-text">可选：配置容器的资源限制、环境变量等</div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="prevStep(2)">上一步</button>
+                            <button type="button" class="btn btn-primary" onclick="createTask()">创建任务</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 任务配置模态框 -->
+<div class="modal fade" id="taskConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">任务配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="taskConfigForm">
+                    <input type="hidden" id="configTaskId">
+                    <div class="mb-3">
+                        <label for="configAlgorithmImage" class="form-label">算法镜像</label>
+                        <input type="text" class="form-control" id="configAlgorithmImage">
+                    </div>
+                    <div class="mb-3">
+                        <label for="configDatasetUrl" class="form-label">数据集URL</label>
+                        <input type="text" class="form-control" id="configDatasetUrl">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTaskConfig()">保存配置</button>
             </div>
         </div>
     </div>
@@ -25,86 +170,319 @@
 
 {% block extra_js %}
 <script>
+    let currentStep = 1;
+    let tasks = [];
+    
     document.addEventListener('DOMContentLoaded', function() {
+        // 加载任务列表
         loadTasks();
+        
+        // 绑定搜索事件
+        document.getElementById('searchBtn').addEventListener('click', filterTasks);
+        document.getElementById('searchInput').addEventListener('keyup', function(e) {
+            if (e.key === 'Enter') filterTasks();
+        });
+        
+        // 绑定状态筛选事件
+        document.getElementById('statusFilter').addEventListener('change', filterTasks);
     });
     
     function loadTasks() {
         fetch('/api/tasks')
             .then(response => response.json())
             .then(data => {
-                renderTasks(data.tasks || []);
+                tasks = data.tasks || [];
+                renderTasks(tasks);
             })
             .catch(error => {
                 console.error('获取任务列表失败:', error);
-                showError(document.getElementById('tasksContainer'), '加载任务列表失败，请刷新重试');
+                showNotification('danger', `获取任务列表失败: ${error.message}`);
             });
     }
     
-    function renderTasks(tasks) {
-        const container = document.getElementById('tasksContainer');
+    function renderTasks(tasksToRender) {
+        const tbody = document.getElementById('tasksTableBody');
+        tbody.innerHTML = '';
         
-        if (tasks.length === 0) {
-            container.innerHTML = `
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> 
-                    暂无任务，请先上传文档并生成测试用例
-                </div>
-                <div class="text-center">
-                    <a href="/documents/upload" class="btn btn-primary">
-                        <i class="bi bi-upload"></i> 上传文档
-                    </a>
-                </div>
+        if (tasksToRender.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-4">
+                        <i class="bi bi-inbox text-muted"></i>
+                        <span class="ms-2">暂无任务数据</span>
+                    </td>
+                </tr>
             `;
             return;
         }
         
-        container.innerHTML = `
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>任务ID</th>
-                            <th>文档ID</th>
-                            <th>测试用例数</th>
-                            <th>状态</th>
-                            <th>创建时间</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tasks.map(task => `
-                            <tr>
-                                <td>${task.task_id}</td>
-                                <td>
-                                    ${task.document_id ? 
-                                        `<a href="/documents/${task.document_id}">${task.document_id.substring(0, 8)}</a>` : 
-                                        '-'
-                                    }
-                                </td>
-                                <td>${task.test_cases_count || 0}</td>
-                                <td>
-                                    <span class="badge ${getStatusBadgeClass(task.status)}">
-                                        ${getStatusText(task.status)}
-                                    </span>
-                                </td>
-                                <td>${formatDate(task.created_at)}</td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="/tasks/${task.task_id}" class="btn btn-outline-primary">详情</a>
-                                        <a href="/tasks/${task.task_id}/configure" class="btn btn-outline-secondary">配置</a>
-                                        ${task.test_cases_count > 0 ? 
-                                            `<a href="/execution/${task.task_id}" class="btn btn-outline-success">执行</a>` : 
-                                            ''
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+        tasksToRender.forEach(task => {
+            const statusClass = {
+                'created': 'secondary',
+                'preparing': 'info',
+                'executing': 'primary',
+                'completed': 'success',
+                'failed': 'danger'
+            }[task.status] || 'secondary';
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td>${task.task_id}</td>
+                    <td>${task.document_id || '-'}</td>
+                    <td>
+                        <small class="text-muted">${task.algorithm_image || '未配置'}</small>
+                    </td>
+                    <td>
+                        <small class="text-muted">${task.dataset_url || '未配置'}</small>
+                    </td>
+                    <td>${task.test_cases_count || 0}</td>
+                    <td>
+                        <span class="badge bg-${statusClass}">
+                            ${getStatusText(task.status)}
+                        </span>
+                    </td>
+                    <td>${formatDate(task.created_at)}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" 
+                                    onclick="openTaskConfig('${task.task_id}')">
+                                <i class="bi bi-gear"></i>
+                            </button>
+                            <a href="/tasks/${task.task_id}" class="btn btn-outline-info">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <button type="button" class="btn btn-outline-danger" 
+                                    onclick="deleteTask('${task.task_id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+    
+    function filterTasks() {
+        const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+        const status = document.getElementById('statusFilter').value;
+        
+        const filteredTasks = tasks.filter(task => {
+            const matchesKeyword = !keyword || 
+                task.task_id.toLowerCase().includes(keyword) ||
+                (task.document_id && task.document_id.toLowerCase().includes(keyword)) ||
+                (task.algorithm_image && task.algorithm_image.toLowerCase().includes(keyword));
+                
+            const matchesStatus = !status || task.status === status;
+            
+            return matchesKeyword && matchesStatus;
+        });
+        
+        renderTasks(filteredTasks);
+    }
+    
+    function nextStep(step) {
+        // 验证当前步骤
+        if (!validateStep(currentStep)) return;
+        
+        // 隐藏当前步骤
+        document.getElementById(`step${currentStep}`).style.display = 'none';
+        // 显示下一步
+        document.getElementById(`step${step}`).style.display = 'block';
+        // 更新进度条
+        document.querySelector('.progress-bar').style.width = `${(step/3)*100}%`;
+        document.querySelector('.progress-bar').textContent = `步骤 ${step}/3`;
+        // 更新当前步骤
+        currentStep = step;
+    }
+    
+    function prevStep(step) {
+        // 隐藏当前步骤
+        document.getElementById(`step${currentStep}`).style.display = 'none';
+        // 显示上一步
+        document.getElementById(`step${step}`).style.display = 'block';
+        // 更新进度条
+        document.querySelector('.progress-bar').style.width = `${(step/3)*100}%`;
+        document.querySelector('.progress-bar').textContent = `步骤 ${step}/3`;
+        // 更新当前步骤
+        currentStep = step;
+    }
+    
+    function validateStep(step) {
+        if (step === 1) {
+            const file = document.getElementById('documentFile').files[0];
+            if (!file) {
+                showNotification('warning', '请选择需要上传的文档');
+                return false;
+            }
+            return true;
+        }
+        return true;
+    }
+    
+    function createTask() {
+        const formData = new FormData();
+        formData.append('file', document.getElementById('documentFile').files[0]);
+        
+        // 第一步：上传文档
+        fetch('/api/documents', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            const documentId = data.document_id;
+            
+            // 第二步：创建任务
+            return fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    document_id: documentId,
+                    dataset_url: document.getElementById('datasetUrl').value.trim(),
+                    algorithm_image: document.getElementById('algorithmImage').value.trim(),
+                    container_config: document.getElementById('containerConfig').value.trim()
+                })
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createTaskModal'));
+            modal.hide();
+            
+            // 显示成功消息
+            showNotification('success', '任务创建成功');
+            
+            // 重新加载任务列表
+            loadTasks();
+            
+            // 重置表单
+            document.getElementById('createTaskForm').reset();
+            currentStep = 1;
+            document.getElementById('step1').style.display = 'block';
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step3').style.display = 'none';
+            document.querySelector('.progress-bar').style.width = '33%';
+            document.querySelector('.progress-bar').textContent = '步骤 1/3';
+        })
+        .catch(error => {
+            console.error('创建任务失败:', error);
+            showNotification('danger', `创建任务失败: ${error.message}`);
+        });
+    }
+    
+    function openTaskConfig(taskId) {
+        const task = tasks.find(t => t.task_id === taskId);
+        if (!task) return;
+        
+        document.getElementById('configTaskId').value = taskId;
+        document.getElementById('configAlgorithmImage').value = task.algorithm_image || '';
+        document.getElementById('configDatasetUrl').value = task.dataset_url || '';
+        
+        const modal = new bootstrap.Modal(document.getElementById('taskConfigModal'));
+        modal.show();
+    }
+    
+    function saveTaskConfig() {
+        const taskId = document.getElementById('configTaskId').value;
+        const algorithmImage = document.getElementById('configAlgorithmImage').value.trim();
+        const datasetUrl = document.getElementById('configDatasetUrl').value.trim();
+        
+        Promise.all([
+            // 更新算法镜像
+            fetch(`/api/tasks/${taskId}/algorithm-image`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    algorithm_image: algorithmImage
+                })
+            }),
+            // 更新数据集URL
+            fetch(`/api/tasks/${taskId}/dataset-url`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dataset_url: datasetUrl
+                })
+            })
+        ])
+        .then(() => {
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('taskConfigModal'));
+            modal.hide();
+            
+            // 显示成功消息
+            showNotification('success', '任务配置已更新');
+            
+            // 重新加载任务列表
+            loadTasks();
+        })
+        .catch(error => {
+            console.error('更新任务配置失败:', error);
+            showNotification('danger', `更新任务配置失败: ${error.message}`);
+        });
+    }
+    
+    function deleteTask(taskId) {
+        if (!confirm('确定要删除这个任务吗？此操作不可恢复。')) return;
+        
+        fetch(`/api/tasks/${taskId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            showNotification('success', '任务已删除');
+            loadTasks();
+        })
+        .catch(error => {
+            console.error('删除任务失败:', error);
+            showNotification('danger', `删除任务失败: ${error.message}`);
+        });
+    }
+    
+    function getStatusText(status) {
+        const statusMap = {
+            'created': '已创建',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
+        
+        document.body.appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => alertDiv.remove(), 300);
+        }, 3000);
     }
 </script>
 {% endblock %} 

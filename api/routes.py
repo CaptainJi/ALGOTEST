@@ -74,6 +74,12 @@ from api.models import (
     ImageSelectionResponse
 )
 
+# 添加MCP相关导入
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.sse import sse_client
+from core.mcp_config import get_mcp_config
+
 # 创建路由器
 router = APIRouter(prefix="/api", tags=["tests"])
 
@@ -2186,3 +2192,87 @@ async def get_dashboard_stats(
     except Exception as e:
         log.error(f"获取仪表盘统计数据失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取仪表盘统计数据失败: {str(e)}")
+
+# 添加MCP状态检查函数
+async def check_mcp_connection() -> bool:
+    """
+    检查MCP服务连接状态
+    
+    Returns:
+        连接成功返回True，失败返回False
+    """
+    # 获取MCP配置
+    mcp_config = get_mcp_config()
+    host = mcp_config["host"]
+    port = mcp_config["port"]
+    sse_url = mcp_config["sse_url"]
+    
+    log.info(f"正在检查MCP服务连接状态: {sse_url}")
+    
+    try:
+        # 尝试建立SSE连接
+        connection_task = asyncio.create_task(
+            asyncio.wait_for(
+                establish_sse_connection(sse_url),
+                timeout=5.0  # 设置5秒超时
+            )
+        )
+        
+        # 等待连接结果
+        result = await connection_task
+        return result
+    except asyncio.TimeoutError:
+        log.error("连接MCP服务超时")
+        return False
+    except Exception as e:
+        log.error(f"连接MCP服务异常: {str(e)}")
+        return False
+
+async def establish_sse_connection(sse_url: str) -> bool:
+    """
+    尝试建立SSE连接
+    
+    Args:
+        sse_url: SSE连接URL
+        
+    Returns:
+        连接成功返回True，失败返回False
+    """
+    try:
+        # 建立SSE连接
+        async with sse_client(sse_url) as (read, write):
+            # 创建客户端会话
+            async with ClientSession(read, write) as session:
+                # 初始化连接
+                await session.initialize()
+                # 检查可用工具
+                tools = await session.list_tools()
+                log.info(f"MCP服务连接成功，可用工具数量: {len(tools.tools) if hasattr(tools, 'tools') else 0}")
+                return True
+    except Exception as e:
+        log.error(f"尝试建立SSE连接时出错: {str(e)}")
+        return False
+
+# MCP状态检查API路由
+@router.get("/mcp/status", response_model=Dict[str, Any])
+async def mcp_status():
+    """
+    检查MCP服务状态
+    
+    返回MCP服务状态信息
+    """
+    try:
+        # 检查MCP连接状态
+        status = await check_mcp_connection()
+        return {
+            "status": "running" if status else "error",
+            "message": "服务正常运行" if status else "服务连接异常",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        log.error(f"检查MCP服务状态时出错: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"检查服务状态时出错: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
