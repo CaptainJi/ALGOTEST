@@ -14,6 +14,7 @@ import time
 from typing import Dict, Any, List, Optional, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Path, Query, Body, Depends
 from pydantic import BaseModel, Field
+from datetime import datetime, timedelta
 
 from core.logger import get_logger
 from core.utils import generate_unique_id
@@ -2084,6 +2085,7 @@ async def get_dashboard_stats(
     - 任务状态分布
     - 等待/完成的任务数
     - 测试结果统计
+    - 近7天的测试执行数据
     """
     log.info("获取仪表盘统计数据")
     
@@ -2129,15 +2131,35 @@ async def get_dashboard_stats(
             "pending": pending_cases,
             "success_rate": round(success_rate, 2)
         }
+
+        # 6. 统计近7天的测试执行数据
+        today = datetime.now().date()
+        daily_stats = []
         
-        return DashboardStatsResponse(
-            document_count=document_count,
-            test_case_count=test_case_count,
-            task_stats=task_stats,
-            waiting_tasks=waiting_tasks,
-            completed_tasks=completed_tasks,
-            test_result_stats=test_result_stats
-        )
+        for i in range(6, -1, -1):
+            target_date = today - timedelta(days=i)
+            next_date = target_date + timedelta(days=1)
+            
+            # 查询当天执行的测试用例数量
+            daily_count = db.query(DBTestCase).filter(
+                DBTestCase.created_at >= target_date,
+                DBTestCase.created_at < next_date
+            ).count()
+            
+            daily_stats.append({
+                "date": target_date.strftime("%Y-%m-%d"),
+                "count": daily_count
+            })
+        
+        return {
+            "document_count": document_count,
+            "test_case_count": test_case_count,
+            "task_stats": task_stats,
+            "waiting_tasks": waiting_tasks,
+            "completed_tasks": completed_tasks,
+            "test_result_stats": test_result_stats,
+            "daily_stats": daily_stats
+        }
         
     except Exception as e:
         log.error(f"获取仪表盘统计数据失败: {str(e)}")

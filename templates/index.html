@@ -82,7 +82,7 @@
 
     <div class="row mb-4">
         <div class="col-md-8">
-            <div class="card h-100">
+            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-bar-chart-line me-2"></i>测试数据分析</span>
                     <div class="dropdown">
@@ -96,19 +96,19 @@
                         </ul>
                     </div>
                 </div>
-                <div class="card-body">
-                    <canvas id="testsChart" height="250"></canvas>
+                <div class="card-body" style="height: 300px; position: relative;">
+                    <canvas id="testsChart"></canvas>
                 </div>
             </div>
         </div>
         
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card">
                 <div class="card-header">
                     <i class="bi bi-pie-chart me-2"></i>测试结果分布
                 </div>
-                <div class="card-body">
-                    <canvas id="resultsChart" height="250"></canvas>
+                <div class="card-body" style="height: 300px; position: relative;">
+                    <canvas id="resultsChart"></canvas>
                 </div>
             </div>
         </div>
@@ -214,6 +214,17 @@
             ];
             window.resultsChart.update();
         }
+
+        // 更新测试数据分析图表
+        if (window.testsChart && data.daily_stats) {
+            const dailyStats = data.daily_stats || [];
+            window.testsChart.data.labels = dailyStats.map(stat => {
+                const date = new Date(stat.date);
+                return date.toLocaleDateString('zh-CN', {month: 'numeric', day: 'numeric'});
+            });
+            window.testsChart.data.datasets[0].data = dailyStats.map(stat => stat.count);
+            window.testsChart.update();
+        }
     }
 
     function updateRecentTasks(data) {
@@ -268,17 +279,43 @@
                 labels: ['通过', '失败', '待执行'],
                 datasets: [{
                     data: [0, 0, 0],
-                    backgroundColor: ['#28a745', '#dc3545', '#ffc107']
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.8)',  // 成功 - 绿色
+                        'rgba(220, 53, 69, 0.8)',  // 失败 - 红色
+                        'rgba(255, 193, 7, 0.8)'   // 待执行 - 黄色
+                    ],
+                    borderColor: [
+                        'rgb(40, 167, 69)',
+                        'rgb(220, 53, 69)',
+                        'rgb(255, 193, 7)'
+                    ],
+                    borderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 plugins: {
                     legend: {
-                        position: 'bottom'
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
                     }
-                }
+                },
+                cutout: '60%'
             }
         });
         
@@ -287,24 +324,34 @@
         window.testsChart = new Chart(testsCtx, {
             type: 'line',
             data: {
-                labels: Array.from({length: 7}, (_, i) => {
-                    const d = new Date();
-                    d.setDate(d.getDate() - (6 - i));
-                    return d.toLocaleDateString();
-                }),
+                labels: Array(7).fill(''),
                 datasets: [{
                     label: '执行的测试用例',
                     data: Array(7).fill(0),
-                    borderColor: '#0d6efd',
-                    tension: 0.4
+                    borderColor: 'rgba(13, 110, 253, 0.8)',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    tension: 0.4,
+                    fill: true
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: true,
                 plugins: {
                     legend: {
                         display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                return `${context[0].label} 测试执行情况`;
+                            },
+                            label: function(context) {
+                                return `执行数量: ${context.raw}`;
+                            }
+                        }
                     }
                 },
                 scales: {
@@ -312,8 +359,20 @@
                         beginAtZero: true,
                         ticks: {
                             stepSize: 1
+                        },
+                        grid: {
+                            drawBorder: false
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
                         }
                     }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
             }
         });
