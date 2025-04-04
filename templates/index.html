@@ -218,12 +218,15 @@
         // 更新测试数据分析图表
         if (window.testsChart && data.daily_stats) {
             const dailyStats = data.daily_stats || [];
-            window.testsChart.data.labels = dailyStats.map(stat => {
+            // 反转数组以确保日期按照从左到右的顺序显示
+            const reversedStats = [...dailyStats].reverse();
+            
+            window.testsChart.data.labels = reversedStats.map(stat => {
                 const date = new Date(stat.date);
                 return date.toLocaleDateString('zh-CN', {month: 'numeric', day: 'numeric'});
             });
-            window.testsChart.data.datasets[0].data = dailyStats.map(stat => stat.count);
-            window.testsChart.update();
+            window.testsChart.data.datasets[0].data = reversedStats.map(stat => stat.count);
+            window.testsChart.update('none'); // 使用 'none' 模式更新以避免动画
         }
     }
 
@@ -361,12 +364,16 @@
                             stepSize: 1
                         },
                         grid: {
-                            drawBorder: false
+                            drawBorder: false,
+                            color: 'rgba(0, 0, 0, 0.1)'
                         }
                     },
                     x: {
                         grid: {
                             display: false
+                        },
+                        ticks: {
+                            maxRotation: 0
                         }
                     }
                 },
