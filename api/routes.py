@@ -1001,9 +1001,10 @@ async def get_document_task_info(
         log.error(f"查询文档任务信息异常: {str(e)}")
         raise HTTPException(status_code=500, detail=f"查询文档任务信息异常: {str(e)}")
 
-
 @router.get("/tasks", response_model=TestTasksResponse)
-async def get_all_tasks():
+async def get_all_tasks(
+    db: Session = Depends(get_db)
+):
     """
     获取所有测试任务
     
@@ -1015,12 +1016,32 @@ async def get_all_tasks():
     log.info("获取所有测试任务")
     
     try:
-        # 调用数据库函数获取所有测试任务
-        tasks = get_all_test_tasks()
+        # 直接从数据库查询所有任务
+        tasks = db.query(DBTestTask).all()
+        
+        # 格式化任务数据
+        formatted_tasks = []
+        for task in tasks:
+            # 获取任务关联的测试用例数量
+            test_cases_count = db.query(DBTestCase).filter(DBTestCase.task_id == task.task_id).count()
+            
+            formatted_tasks.append(TestTaskItem(
+                id=task.id,
+                task_id=task.task_id,
+                document_id=task.document_id,
+                requirement_doc=task.requirement_doc,
+                algorithm_image=task.algorithm_image,
+                dataset_url=task.dataset_url,
+                container_name=task.container_name,
+                status=task.status or "unknown",
+                created_at=task.created_at.isoformat() if task.created_at else None,
+                updated_at=task.updated_at.isoformat() if task.updated_at else None,
+                test_cases_count=test_cases_count
+            ))
         
         return TestTasksResponse(
-            message="成功获取所有测试任务",
-            tasks=tasks
+            message=f"成功获取{len(formatted_tasks)}个测试任务",
+            tasks=formatted_tasks
         )
     except Exception as e:
         log.error(f"获取所有测试任务失败: {str(e)}")
@@ -1028,7 +1049,6 @@ async def get_all_tasks():
             status_code=500,
             detail=f"获取测试任务失败: {str(e)}"
         )
-
 
 # 开始任务执行前准备Docker容器
 @router.post("/tasks/{task_id}/prepare", response_model=DockerSetupResponse)
@@ -1757,7 +1777,9 @@ async def get_test_cases_data(
                     name=input_data.get("name", "未命名测试用例"),
                     test_data=case.test_data,
                     purpose=input_data.get("purpose", ""),
-                    steps=input_data.get("steps", "")
+                    steps=input_data.get("steps", ""),
+                    status=case.status or "pending",  # 添加状态字段
+                    is_passed=case.is_passed  # 添加是否通过字段
                 )
             )
         

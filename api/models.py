@@ -150,6 +150,8 @@ class TestCaseWithData(BaseModel):
     test_data: Optional[str] = Field(None, description="测试数据路径")
     purpose: str = Field(description="测试目的")
     steps: str = Field(description="测试步骤")
+    status: str = Field("pending", description="执行状态")
+    is_passed: Optional[bool] = Field(None, description="是否通过测试")
 
 class TestCasesDataResponse(BaseModel):
     """测试用例数据响应模型"""
