@@ -200,7 +200,17 @@
         
         if (data.case_details && data.case_details.length > 0) {
             data.case_details.forEach(detail => {
-                const status = detail.is_passed ? '✅ 通过' : '❌ 失败';
+                let status;
+                if (detail.status === 'pending') {
+                    status = '⏳ 待执行';
+                } else if (detail.status === 'executing') {
+                    status = '🔄 执行中';
+                } else if (detail.status === 'completed') {
+                    status = detail.is_passed ? '✅ 通过' : '❌ 失败';
+                } else {
+                    status = '⚠️ 未知状态';
+                }
+                
                 logContent += `[${detail.case_id}] ${detail.name} - ${status}\n`;
                 if (detail.result_analysis) {
                     logContent += `分析结果: ${detail.result_analysis}\n`;
