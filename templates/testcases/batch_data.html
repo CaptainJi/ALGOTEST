@@ -134,6 +134,14 @@
 
     // 页面加载完成
     document.addEventListener('DOMContentLoaded', function() {
+        // 获取URL中的cases参数
+        const urlParams = new URLSearchParams(window.location.search);
+        const casesParam = urlParams.get('cases');
+        if (casesParam) {
+            selectedCaseIds = casesParam.split(',');
+            updateSetDataButton();
+        }
+        
         // 加载任务列表
         loadTasks();
 
@@ -306,9 +314,8 @@
             return;
         }
         
-        // 清空之前选择的测试用例
-        selectedCaseIds = [];
-        updateSetDataButton();
+        // 不清空之前选择的测试用例，改为保存它们
+        const previouslySelected = [...selectedCaseIds];
         
         container.innerHTML = `
             <div class="table-responsive">
@@ -330,7 +337,8 @@
                                     <div class="form-check">
                                         <input class="form-check-input case-checkbox" type="checkbox" 
                                                value="${testCase.case_id}" 
-                                               id="case-${testCase.case_id}">
+                                               id="case-${testCase.case_id}"
+                                               ${previouslySelected.includes(testCase.case_id) ? 'checked' : ''}>
                                     </div>
                                 </td>
                                 <td>
@@ -361,10 +369,21 @@
                 toggleCaseSelection(this.value, this.checked);
                 updateSetDataButton();
             });
+            
+            // 如果复选框是选中状态，确保它被添加到selectedCaseIds中
+            if (checkbox.checked) {
+                toggleCaseSelection(checkbox.value, true);
+            }
         });
         
-        // 清空全选复选框
-        document.getElementById('selectAllCases').checked = false;
+        // 更新全选复选框状态
+        const allCheckboxes = document.querySelectorAll('.case-checkbox');
+        const checkedCheckboxes = document.querySelectorAll('.case-checkbox:checked');
+        document.getElementById('selectAllCases').checked = 
+            allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+            
+        // 更新设置数据按钮状态
+        updateSetDataButton();
     }
 
     // 切换测试用例选择状态

@@ -74,62 +74,69 @@ def analyze_test_results(state: ReportState) -> ReportState:
                 expected_output = case.expected_output or {}
                 actual_output = case.actual_output
                 
+                # 更详细地展示预期输出和实际输出的内容
                 case_info = f"""
 测试用例 {i}:
 - 用例ID: {case.case_id}
 - 名称: {input_data.get('name', '未命名')}
 - 目的: {input_data.get('purpose', '无')}
 - 测试步骤: {input_data.get('steps', '无')}
-- 预期结果: {expected_output.get('expected_result', '无')}
-- 验证方法: {expected_output.get('validation_method', '无')}
-- 实际输出: {actual_output or '无输出'}
+- 预期结果:
+  * 预期输出: {json.dumps(expected_output.get('expected_result', {}), ensure_ascii=False, indent=2)}
+  * 验证方法: {expected_output.get('validation_method', '无')}
+- 实际输出:
+  * 输出内容: {json.dumps(actual_output, ensure_ascii=False, indent=2) if actual_output else '无输出'}
 """
                 test_cases_info.append(case_info)
             
-            # 构建整体提示词
+            # 修改提示词，更明确地指导大模型如何进行结果对比
             prompt = f"""
-请分析以下所有测试用例的执行结果，判断每个测试用例是否通过，并提供详细的分析依据。
+请严格分析以下测试用例的执行结果。你需要对比每个测试用例的预期结果和实际输出，判断测试是否通过。
 
 {os.linesep.join(test_cases_info)}
 
-对每个测试用例，请提供以下内容：
-1. 测试是否通过的判断（true/false）
+对每个测试用例，请按照以下标准进行分析：
+
+1. 测试是否通过的判断（true/false）：
+   - 实际输出必须完全符合预期结果的要求
+   - 如果实际输出与预期结果有任何不符，则判定为失败
+   - 如果缺少实际输出，则判定为失败
+   - 必须严格按照验证方法中描述的标准进行验证
+
 2. 详细的分析依据，包括：
-   - 对比预期结果和实际输出的差异
-   - 根据验证方法进行的具体验证过程
-   - 如果测试失败，指出具体的失败原因
+   - 列出预期结果和实际输出的具体对比
+   - 说明是否满足验证方法中的每一项要求
+   - 如果测试失败，详细说明不符合预期的具体原因
+
 3. 总结性结论
 
 请按以下JSON格式输出，key为测试用例ID：
-{{
-    "test_case_1_id": {{
+{
+    "test_case_1_id": {
         "is_passed": true/false,
-        "analysis": "详细的分析过程...",
+        "analysis": "详细的分析过程，包含预期结果和实际输出的具体对比...",
         "conclusion": "总结性结论..."
-    }},
-    "test_case_2_id": {{
-        "is_passed": true/false,
-        "analysis": "详细的分析过程...",
-        "conclusion": "总结性结论..."
-    }},
-    ...
-}}
+    }
+}
 """
             
             # 调用大模型API
             log.info("调用大模型API进行批量分析...")
             result = call_zhipu_api(prompt, llm_config)
             
+            
             # 解析返回的JSON
             try:
                 # 尝试直接解析
                 analysis_results_data = json.loads(result)
+                log.debug(f"大模型API返回结果: {analysis_results_data}")
             except json.JSONDecodeError:
                 # 如果直接解析失败，尝试从文本中提取JSON
                 import re
                 json_match = re.search(r'\{[\s\S]*\}', result)
                 if json_match:
                     analysis_results_data = json.loads(json_match.group())
+                    log.debug(f"大模型API返回结果: {analysis_results_data}")
                 else:
                     raise ValueError("无法解析大模型返回的结果")
             

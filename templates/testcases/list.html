@@ -83,8 +83,48 @@
         // 添加批量设置测试数据按钮点击事件
         document.getElementById('batchDataBtn').addEventListener('click', function() {
             if (selectedCases.size > 0) {
-                window.location.href = `/testcases/batch-data?cases=${Array.from(selectedCases).join(',')}`;
+                // 显示模态框
+                batchDataModal.show();
             }
+        });
+        
+        // 添加确认设置测试数据按钮点击事件
+        document.getElementById('confirmBatchData').addEventListener('click', function() {
+            const testDataPath = document.getElementById('testDataPath').value.trim();
+            if (!testDataPath) {
+                showNotification('warning', '请输入测试数据路径');
+                return;
+            }
+
+            // 关闭模态框
+            batchDataModal.hide();
+
+            // 显示加载提示
+            showNotification('info', `正在为 ${selectedCases.size} 个测试用例设置数据...`);
+
+            // 调用API设置测试数据
+            fetch('/api/testcases/batch-set-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    case_ids: Array.from(selectedCases),
+                    test_data: testDataPath
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showNotification('success', data.message || '测试数据设置成功');
+                // 清空输入框
+                document.getElementById('testDataPath').value = '';
+                // 重新加载测试用例列表
+                loadTestCases();
+            })
+            .catch(error => {
+                console.error('设置测试数据失败:', error);
+                showNotification('danger', `设置测试数据失败: ${error.message}`);
+            });
         });
         
         // 添加智能分配测试数据按钮点击事件
