@@ -176,232 +176,146 @@
         // 初始化图表
         initCharts();
         
-        // 加载系统状态数据
-        fetch('/api/tasks')
+        // 加载仪表盘统计数据
+        fetch('/api/dashboard/stats')
             .then(response => response.json())
             .then(data => {
                 updateDashboardStats(data);
-                updateRecentTasks(data);
-                updateChartData(data);
             })
             .catch(error => {
-                console.error('获取任务数据失败:', error);
+                console.error('获取仪表盘统计数据失败:', error);
+            });
+            
+        // 加载最近任务列表
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                updateRecentTasks(data);
+            })
+            .catch(error => {
+                console.error('获取任务列表失败:', error);
             });
     });
 
     function updateDashboardStats(data) {
-        // 这里假设后端API已返回所需数据，实际应根据真实API调整
-        const tasks = data.tasks || [];
+        // 更新统计卡片
+        animateValue('documentsCount', 0, data.document_count || 0, 1000);
+        animateValue('testCasesCount', 0, data.test_case_count || 0, 1000);
+        animateValue('pendingTasksCount', 0, data.waiting_tasks || 0, 1000);
+        animateValue('completedTasksCount', 0, data.completed_tasks || 0, 1000);
         
-        // 计算统计数据
-        const pendingTasks = tasks.filter(task => ['created', 'preparing', 'executing'].includes(task.status)).length;
-        const completedTasks = tasks.filter(task => ['completed', 'failed'].includes(task.status)).length;
-        const documentsCount = tasks.filter(task => task.document_id).length;
-        const testCasesCount = tasks.reduce((sum, task) => sum + (task.test_cases_count || 0), 0);
-        
-        // 更新UI并添加动画效果
-        animateValue('pendingTasksCount', 0, pendingTasks, 1000);
-        animateValue('completedTasksCount', 0, completedTasks, 1000);
-        animateValue('documentsCount', 0, documentsCount, 1000);
-        animateValue('testCasesCount', 0, testCasesCount, 1000);
+        // 更新测试结果分布图表
+        if (window.resultsChart) {
+            const resultStats = data.test_result_stats || {};
+            window.resultsChart.data.datasets[0].data = [
+                resultStats.passed || 0,
+                resultStats.failed || 0,
+                resultStats.pending || 0
+            ];
+            window.resultsChart.update();
+        }
     }
 
     function updateRecentTasks(data) {
         const tasks = data.tasks || [];
-        const tableBody = document.querySelector('#recentTasksTable tbody');
+        const tbody = document.querySelector('#recentTasksTable tbody');
+        tbody.innerHTML = '';
         
         if (tasks.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4">暂无任务</td></tr>';
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-4">
+                        <i class="bi bi-inbox text-muted"></i>
+                        <span class="ms-2">暂无任务数据</span>
+                    </td>
+                </tr>
+            `;
             return;
         }
         
-        // 对任务按创建时间排序，显示最近的5个
-        const recentTasks = [...tasks].sort((a, b) => 
-            new Date(b.created_at) - new Date(a.created_at)
-        ).slice(0, 5);
-        
-        tableBody.innerHTML = recentTasks.map(task => `
-            <tr>
-                <td>
-                    <span class="badge bg-light text-dark">${task.task_id.substring(0, 8)}</span>
-                </td>
-                <td>
-                    ${task.document_id ? 
-                        `<a href="/documents/${task.document_id}" class="text-decoration-none">${task.document_id.substring(0, 8)}</a>` : 
-                        '<span class="text-muted">-</span>'
-                    }
-                </td>
-                <td>${task.test_cases_count || 0}</td>
-                <td>
-                    <span class="badge ${getStatusBadgeClass(task.status)}">
-                        ${getStatusText(task.status)}
-                    </span>
-                </td>
-                <td>${formatDate(task.created_at)}</td>
-                <td>
-                    <div class="btn-group btn-group-sm">
-                        <a href="/tasks/${task.task_id}" class="btn btn-outline-primary">
+        tasks.slice(0, 5).forEach(task => {
+            const statusClass = {
+                'completed': 'success',
+                'failed': 'danger',
+                'running': 'primary',
+                'pending': 'warning',
+                'created': 'info'
+            }[task.status] || 'secondary';
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td>${task.task_id}</td>
+                    <td>${task.document_id || '-'}</td>
+                    <td>${task.test_cases_count || 0}</td>
+                    <td><span class="badge bg-${statusClass}">${task.status}</span></td>
+                    <td>${new Date(task.created_at).toLocaleString()}</td>
+                    <td>
+                        <a href="/tasks/${task.task_id}" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-eye"></i>
                         </a>
-                        ${task.test_cases_count > 0 && task.status !== 'executing' ? 
-                            `<a href="/execution/${task.task_id}" class="btn btn-outline-success">
-                                <i class="bi bi-play-fill"></i>
-                            </a>` : 
-                            ''
-                        }
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+                    </td>
+                </tr>
+            `;
+        });
     }
 
-    let testsChart, resultsChart;
-
     function initCharts() {
-        // 测试数据分析图表
+        // 初始化测试结果分布图表
+        const resultsCtx = document.getElementById('resultsChart').getContext('2d');
+        window.resultsChart = new Chart(resultsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['通过', '失败', '待执行'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['#28a745', '#dc3545', '#ffc107']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // 初始化测试数据分析图表
         const testsCtx = document.getElementById('testsChart').getContext('2d');
-        testsChart = new Chart(testsCtx, {
+        window.testsChart = new Chart(testsCtx, {
             type: 'line',
             data: {
                 labels: Array.from({length: 7}, (_, i) => {
                     const d = new Date();
                     d.setDate(d.getDate() - (6 - i));
-                    return d.toLocaleDateString('zh-CN', {month: 'short', day: 'numeric'});
+                    return d.toLocaleDateString();
                 }),
-                datasets: [
-                    {
-                        label: '测试用例',
-                        data: [0, 0, 0, 0, 0, 0, 0],
-                        borderColor: '#4b6cb7',
-                        backgroundColor: 'rgba(75, 108, 183, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    },
-                    {
-                        label: '测试任务',
-                        data: [0, 0, 0, 0, 0, 0, 0],
-                        borderColor: '#43cea2',
-                        backgroundColor: 'rgba(67, 206, 162, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }
-                ]
+                datasets: [{
+                    label: '执行的测试用例',
+                    data: Array(7).fill(0),
+                    borderColor: '#0d6efd',
+                    tension: 0.4
+                }]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top',
+                        display: false
                     }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: {
-                            precision: 0,
-                            stepSize: 5
-                        },
-                        suggestedMax: function() {
-                            const maxValue = Math.max(
-                                ...this.chart.data.datasets[0].data,
-                                ...this.chart.data.datasets[1].data
-                            );
-                            return Math.min(maxValue + 5, Math.ceil(maxValue * 1.2));
+                            stepSize: 1
                         }
                     }
-                },
-                responsive: true,
-                maintainAspectRatio: false
+                }
             }
-        });
-
-        // 测试结果分布图表
-        const resultsCtx = document.getElementById('resultsChart').getContext('2d');
-        resultsChart = new Chart(resultsCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['通过', '失败', '待执行'],
-                datasets: [{
-                    data: [0, 0, 0],
-                    backgroundColor: [
-                        'rgba(67, 206, 162, 0.8)',
-                        'rgba(248, 80, 50, 0.8)',
-                        'rgba(75, 108, 183, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(67, 206, 162, 1)',
-                        'rgba(248, 80, 50, 1)',
-                        'rgba(75, 108, 183, 1)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    }
-                },
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '70%'
-            }
-        });
-    }
-
-    function updateChartData(data) {
-        const tasks = data.tasks || [];
-        
-        // 模拟过去7天的数据
-        const pastDaysTestCases = [5, 8, 12, 15, 18, 22, 25];
-        const pastDaysTasks = [1, 2, 2, 3, 3, 4, 5];
-        
-        // 更新测试数据分析图表
-        testsChart.data.datasets[0].data = pastDaysTestCases;
-        testsChart.data.datasets[1].data = pastDaysTasks;
-        testsChart.update();
-        
-        // 计算测试结果分布
-        let passed = 0, failed = 0, pending = 0;
-        
-        // 模拟数据
-        passed = 18;
-        failed = 7;
-        pending = 25 - passed - failed;
-        
-        // 更新测试结果分布图表
-        resultsChart.data.datasets[0].data = [passed, failed, pending];
-        resultsChart.update();
-    }
-
-    function getStatusBadgeClass(status) {
-        const statusMap = {
-            'created': 'bg-secondary',
-            'preparing': 'bg-info',
-            'executing': 'bg-primary',
-            'completed': 'bg-success',
-            'failed': 'bg-danger'
-        };
-        return statusMap[status] || 'bg-secondary';
-    }
-
-    function getStatusText(status) {
-        const statusMap = {
-            'created': '已创建',
-            'preparing': '准备中',
-            'executing': '执行中',
-            'completed': '已完成',
-            'failed': '失败'
-        };
-        return statusMap[status] || status;
-    }
-
-    function formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleString('zh-CN', {
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
         });
     }
 </script>

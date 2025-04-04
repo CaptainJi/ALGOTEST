@@ -26,7 +26,14 @@ Base = declarative_base()
 
 # 创建数据库引擎
 settings = get_settings()
-engine = create_engine(settings.db_url)
+engine = create_engine(
+    settings.db_url,
+    pool_size=20,  # 增加基础连接池大小
+    max_overflow=30,  # 增加最大溢出连接数
+    pool_timeout=60,  # 增加连接超时时间
+    pool_recycle=3600,  # 设置连接回收时间为1小时
+    pool_pre_ping=True  # 启用连接池预检
+)
 
 # 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -285,12 +292,12 @@ def update_test_case_status(case_id: str, status: str, result: Any = None) -> Op
             
             case.is_passed = success
             
-        elif status == "failed":
-            # 如果状态是failed，直接设置为未通过
+        elif status == "failed" and result is not None:
+            # 只有在提供了执行结果的情况下，才设置为未通过
             case.is_passed = False
         else:
-            # 其他状态（如pending、running）保持is_passed为None
-            case.is_passed = None
+            # 其他状态（如pending、running）或没有结果时保持is_passed不变
+            pass
         
         # 更新结果
         if result is not None:

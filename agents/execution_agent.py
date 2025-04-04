@@ -1039,9 +1039,21 @@ if [ ! -z "$container_id" ]; then
     docker rm -f {container_name}
 fi
 
+# 拉取镜像
+echo "正在拉取算法镜像: {algorithm_image}"
+docker pull {algorithm_image}
+if [ $? -ne 0 ]; then
+    echo "拉取镜像失败: {algorithm_image}"
+    exit 1
+fi
+
 # 运行新容器
 echo "正在启动新容器: {container_name}"
 docker run --gpus=all -itd --privileged -v /etc/localtime:/etc/localtime:ro -e LANG=C.UTF-8 --name {container_name} {dataset_mount} {algorithm_image}
+if [ $? -ne 0 ]; then
+    echo "启动容器失败: {container_name}"
+    exit 1
+fi
 
 # 检查容器是否成功启动
 sleep 2
@@ -1065,28 +1077,30 @@ echo "算法镜像: {algorithm_image}"
         # 从配置获取SSE URL
         sse_url = get_mcp_config()["sse_url"]
         
-        # 连接到MCP服务器并执行脚本
-        async with sse_client(sse_url) as (read, write):
-            async with ClientSession(read, write) as session:
-                # 初始化连接
-                await session.initialize()
-                log.info("MCP服务器连接成功")
-                
-                # 使用execute_script工具执行Docker脚本
-                log.info("正在执行Docker配置脚本...")
-                result = await session.call_tool("execute_script", {"script": script})
-                
-                # 检查脚本执行结果
-                if hasattr(result, 'stderr') and result.stderr:
-                    log.error(f"Docker脚本执行出错: {result.stderr}")
-                    return {
-                        "success": False,
-                        "task_id": task_id,
-                        "error": f"Docker容器启动失败: {result.stderr}"
-                    }
-                
-                # 再次检查容器是否真的在运行
-                verify_script = f"""
+        try:
+            # 连接到MCP服务器并执行脚本
+            async with sse_client(sse_url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    # 初始化连接
+                    await session.initialize()
+                    log.info("MCP服务器连接成功")
+                    
+                    # 使用execute_script工具执行Docker脚本
+                    log.info("正在执行Docker配置脚本...")
+                    result = await session.call_tool("execute_script", {"script": script})
+                    
+                    # 检查脚本执行结果
+                    if hasattr(result, 'stderr') and result.stderr:
+                        error_msg = result.stderr
+                        log.error(f"Docker脚本执行出错: {error_msg}")
+                        return {
+                            "success": False,
+                            "task_id": task_id,
+                            "error": f"Docker容器启动失败: {error_msg}"
+                        }
+                    
+                    # 再次检查容器是否真的在运行
+                    verify_script = f"""
 container_status=$(docker inspect -f '{{{{.State.Running}}}}' {container_name} 2>/dev/null || echo "false")
 if [ "$container_status" != "true" ]; then
     echo "容器状态检查失败: 未运行"
@@ -1094,59 +1108,81 @@ if [ "$container_status" != "true" ]; then
 fi
 echo "容器状态检查成功: 正在运行"
 """
-                
-                try:
-                    # 等待容器完全启动
-                    await asyncio.sleep(3)
-                    # 验证容器状态
-                    verify_result = await session.call_tool("execute_script", {"script": verify_script})
                     
-                    if hasattr(verify_result, 'stderr') and verify_result.stderr:
-                        log.error(f"容器状态验证失败: {verify_result.stderr}")
+                    try:
+                        # 等待容器完全启动
+                        await asyncio.sleep(3)
+                        # 验证容器状态
+                        verify_result = await session.call_tool("execute_script", {"script": verify_script})
+                        
+                        if hasattr(verify_result, 'stderr') and verify_result.stderr:
+                            error_msg = verify_result.stderr
+                            log.error(f"容器状态验证失败: {error_msg}")
+                            return {
+                                "success": False,
+                                "task_id": task_id,
+                                "error": f"容器启动后未正常运行: {error_msg}"
+                            }
+                        
+                        # 检查验证脚本输出
+                        if hasattr(verify_result, 'stdout') and "容器状态检查成功" not in verify_result.stdout:
+                            error_msg = verify_result.stdout
+                            log.error(f"容器状态验证未通过: {error_msg}")
+                            return {
+                                "success": False,
+                                "task_id": task_id,
+                                "error": f"容器状态验证未通过: {error_msg}"
+                            }
+                        
+                        log.info(f"Docker容器验证成功: {container_name}")
+                        
+                        # 更新数据库中的容器名称
+                        with get_db() as db:
+                            task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+                            if task:
+                                task.container_name = container_name
+                                db.commit()
+                                log.info(f"已更新数据库中的容器名称: {container_name}")
+                        
+                    except Exception as e:
+                        error_msg = str(e)
+                        log.error(f"验证容器状态时出错: {error_msg}")
                         return {
                             "success": False,
                             "task_id": task_id,
-                            "error": f"容器启动后未正常运行: {verify_result.stderr}"
+                            "error": f"验证容器状态时出错: {error_msg}"
                         }
                     
-                    # 检查验证脚本输出
-                    if hasattr(verify_result, 'stdout') and "容器状态检查成功" not in verify_result.stdout:
-                        log.error(f"容器状态验证未通过: {verify_result.stdout}")
-                        return {
-                            "success": False,
-                            "task_id": task_id,
-                            "error": f"容器状态验证未通过: {verify_result.stdout}"
-                        }
+                    log.info(f"Docker容器设置完成: {container_name}")
                     
-                    log.info(f"Docker容器验证成功: {container_name}")
-                    
-                except Exception as e:
-                    log.error(f"验证容器状态时出错: {str(e)}")
                     return {
-                        "success": False,
+                        "success": True,
                         "task_id": task_id,
-                        "error": f"验证容器状态时出错: {str(e)}"
+                        "container_name": container_name,
+                        "algorithm_image": algorithm_image,
+                        "dataset_url": dataset_url,
+                        "result": {
+                            "stdout": result.stdout if hasattr(result, "stdout") else str(result),
+                            "stderr": result.stderr if hasattr(result, "stderr") else ""
+                        }
                     }
-                
-                log.info(f"Docker容器设置完成: {container_name}")
-        
-        return {
-            "success": True,
-            "task_id": task_id,
-            "container_name": container_name,
-            "algorithm_image": algorithm_image,
-            "dataset_url": dataset_url,
-            "result": {
-                "stdout": result.stdout if hasattr(result, "stdout") else str(result),
-                "stderr": result.stderr if hasattr(result, "stderr") else ""
+                    
+        except Exception as e:
+            error_msg = str(e)
+            log.error(f"MCP服务器操作失败: {error_msg}")
+            return {
+                "success": False,
+                "task_id": task_id,
+                "error": f"MCP服务器操作失败: {error_msg}"
             }
-        }
+            
     except Exception as e:
-        log.error(f"设置Docker容器失败: {str(e)}")
+        error_msg = str(e)
+        log.error(f"设置Docker容器失败: {error_msg}")
         return {
             "success": False,
             "task_id": task_id,
-            "error": str(e)
+            "error": error_msg
         }
 
 

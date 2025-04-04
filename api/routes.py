@@ -11,7 +11,7 @@ import json
 import shutil
 import tempfile
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Path, Query, Body, Depends
 from pydantic import BaseModel, Field
 
@@ -1157,24 +1157,17 @@ async def execute_task_tests(
         with get_db() as db:
             cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
             missing_data_cases = []
-            invalid_data_cases = []
             
             for case in cases:
                 if not case.test_data:
                     missing_data_cases.append(case.case_id)
-                elif not os.path.exists(case.test_data):
-                    invalid_data_cases.append(case.case_id)
             
-            error_messages = []
             if missing_data_cases:
-                error_messages.append(f"以下测试用例未设置测试数据: {', '.join(missing_data_cases)}")
-            if invalid_data_cases:
-                error_messages.append(f"以下测试用例的测试数据路径无效: {', '.join(invalid_data_cases)}")
-            
-            if error_messages:
+                error_message = f"以下测试用例未设置测试数据: {', '.join(missing_data_cases)}"
+                log.error(error_message)
                 raise HTTPException(
                     status_code=400,
-                    detail="\n".join(error_messages)
+                    detail=error_message
                 )
         
         # 初始化状态
@@ -2067,3 +2060,85 @@ async def execute_select_images(
     except Exception as e:
         log.error(f"执行图片选择时出错: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"执行图片选择时出错: {str(e)}")
+
+# 添加新的响应模型
+class DashboardStatsResponse(BaseModel):
+    """仪表盘统计数据响应模型"""
+    document_count: int = Field(..., description="已上传的需求文档数量")
+    test_case_count: int = Field(..., description="自动生成的测试用例数量")
+    task_stats: Dict[str, int] = Field(..., description="任务状态统计")
+    waiting_tasks: int = Field(..., description="等待执行的任务数")
+    completed_tasks: int = Field(..., description="成功执行的任务数")
+    test_result_stats: Dict[str, Union[int, float]] = Field(..., description="测试结果统计")
+
+@router.get("/dashboard/stats", response_model=DashboardStatsResponse)
+async def get_dashboard_stats(
+    db: Session = Depends(get_db)
+):
+    """
+    获取仪表盘统计数据
+    
+    返回系统整体运行状态的统计数据，包括：
+    - 文档数量
+    - 测试用例数量
+    - 任务状态分布
+    - 等待/完成的任务数
+    - 测试结果统计
+    """
+    log.info("获取仪表盘统计数据")
+    
+    try:
+        # 1. 统计文档数量（通过已上传的PDF文件）
+        pdf_dir = "data/pdfs"
+        try:
+            document_count = len([f for f in os.listdir(pdf_dir) if f.endswith('.pdf')])
+        except:
+            document_count = 0
+            
+        # 2. 统计测试用例总数
+        test_case_count = db.query(DBTestCase).count()
+        
+        # 3. 统计任务状态分布
+        task_stats = {}
+        tasks = db.query(DBTestTask).all()
+        for task in tasks:
+            status = task.status or "unknown"
+            task_stats[status] = task_stats.get(status, 0) + 1
+            
+        # 4. 统计等待和完成的任务
+        waiting_tasks = db.query(DBTestTask).filter(
+            DBTestTask.status.in_(["created", "pending"])
+        ).count()
+        
+        completed_tasks = db.query(DBTestTask).filter(
+            DBTestTask.status == "completed"
+        ).count()
+        
+        # 5. 统计测试结果
+        total_cases = test_case_count
+        passed_cases = db.query(DBTestCase).filter(DBTestCase.is_passed == True).count()
+        failed_cases = db.query(DBTestCase).filter(DBTestCase.is_passed == False).count()
+        pending_cases = total_cases - passed_cases - failed_cases
+        
+        success_rate = (passed_cases / total_cases * 100) if total_cases > 0 else 0
+        
+        test_result_stats = {
+            "total": total_cases,
+            "passed": passed_cases,
+            "failed": failed_cases,
+            "pending": pending_cases,
+            "success_rate": round(success_rate, 2)
+        }
+        
+        return DashboardStatsResponse(
+            document_count=document_count,
+            test_case_count=test_case_count,
+            task_stats=task_stats,
+            waiting_tasks=waiting_tasks,
+            completed_tasks=completed_tasks,
+            test_result_stats=test_result_stats
+        )
+        
+    except Exception as e:
+        log.error(f"获取仪表盘统计数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取仪表盘统计数据失败: {str(e)}")
