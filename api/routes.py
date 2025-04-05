@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import time
 from typing import Dict, Any, List, Optional, Union
-from fastapi import APIRouter, HTTPException, UploadFile, File, Path, Query, Body, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Path, Query, Body, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
@@ -85,6 +85,84 @@ router = APIRouter(prefix="/api", tags=["tests"])
 
 # 获取日志记录器
 log = get_logger("api")
+
+# 添加WebSocket连接管理
+class ConnectionManager:
+    def __init__(self):
+        # 存储所有活跃连接，格式: {case_id: [websocket1, websocket2, ...]}
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+    
+    async def connect(self, websocket: WebSocket, case_id: str):
+        """添加新的WebSocket连接"""
+        await websocket.accept()
+        if case_id not in self.active_connections:
+            self.active_connections[case_id] = []
+        self.active_connections[case_id].append(websocket)
+        log.info(f"WebSocket连接已建立: case_id={case_id}")
+    
+    def disconnect(self, websocket: WebSocket, case_id: str):
+        """移除WebSocket连接"""
+        if case_id in self.active_connections:
+            if websocket in self.active_connections[case_id]:
+                self.active_connections[case_id].remove(websocket)
+            if not self.active_connections[case_id]:
+                del self.active_connections[case_id]
+        log.info(f"WebSocket连接已关闭: case_id={case_id}")
+    
+    async def send_json(self, case_id: str, message: dict):
+        """向特定case_id的所有连接发送JSON消息"""
+        if case_id in self.active_connections:
+            disconnected_ws = []
+            for websocket in self.active_connections[case_id]:
+                try:
+                    await websocket.send_json(message)
+                except Exception as e:
+                    log.error(f"发送消息失败: {str(e)}")
+                    disconnected_ws.append(websocket)
+            
+            # 移除已断开的连接
+            for ws in disconnected_ws:
+                self.disconnect(ws, case_id)
+    
+    async def broadcast(self, message: dict):
+        """向所有连接发送消息"""
+        for case_id in list(self.active_connections.keys()):
+            await self.send_json(case_id, message)
+
+# 创建连接管理器实例
+manager = ConnectionManager()
+
+# WebSocket测试用例执行状态端点
+@router.websocket("/ws/testcases/{case_id}")
+async def websocket_endpoint(websocket: WebSocket, case_id: str):
+    """
+    WebSocket端点，用于获取测试用例执行的实时状态更新
+    
+    - **case_id**: 测试用例ID
+    """
+    await manager.connect(websocket, case_id)
+    
+    # 发送初始连接成功消息
+    await websocket.send_json({
+        "event": "connected",
+        "message": f"WebSocket连接已建立，将接收测试用例 {case_id} 的实时更新",
+        "case_id": case_id,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    try:
+        # 保持连接，直到客户端断开
+        while True:
+            # 等待客户端消息，但不处理（仅用于保持连接）
+            data = await websocket.receive_text()
+            # 发送简单的确认消息
+            await websocket.send_json({
+                "event": "pong",
+                "message": "连接正常",
+                "timestamp": datetime.now().isoformat()
+            })
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, case_id)
 
 # 临时存储上传的文档
 # 注意：在实际生产环境中，应该使用数据库存储
@@ -1378,27 +1456,81 @@ async def execute_single_test_case(
         task = get_test_task(task_id)
         if not task:
             raise HTTPException(status_code=404, detail=f"关联的任务不存在: {task_id}")
+        
+        # 通过WebSocket发送测试开始消息
+        await manager.send_json(case_id, {
+            "event": "test_started",
+            "message": "测试用例执行开始",
+            "case_id": case_id,
+            "task_id": task_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "executing"
+        })
+        
+        # 更新测试用例状态为执行中
+        update_test_case_status(case_id, "executing")
             
         # 检查测试数据是否已设置
         if not case.test_data:
             log.error(f"测试用例 {case_id} 未设置测试数据")
+            error_msg = "请先设置测试数据后再执行测试"
+            
+            # 发送错误消息
+            await manager.send_json(case_id, {
+                "event": "test_error",
+                "message": error_msg,
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
+            
             raise HTTPException(
                 status_code=400,
-                detail="请先设置测试数据后再执行测试"
+                detail=error_msg
             )
         
         # 确保容器已准备就绪
         log.info(f"确保容器已准备就绪: {task_id}")
+        
+        # 发送容器准备消息
+        await manager.send_json(case_id, {
+            "event": "preparing_container",
+            "message": "正在准备Docker容器...",
+            "case_id": case_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "executing"
+        })
+        
         container_result = await ensure_container_ready(task_id)
         if not container_result["success"]:
             error_msg = container_result.get('error', '未知错误')
             log.error(f"容器准备失败: {error_msg}")
+            
+            # 发送容器准备失败消息
+            await manager.send_json(case_id, {
+                "event": "container_failed",
+                "message": f"容器准备失败: {error_msg}",
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
+            
             raise HTTPException(
                 status_code=500,
                 detail=f"容器准备失败: {error_msg}"
             )
         
         log.info(f"容器已准备就绪: {container_result.get('container_name')}")
+        
+        # 发送容器准备就绪消息
+        await manager.send_json(case_id, {
+            "event": "container_ready",
+            "message": "Docker容器已准备就绪",
+            "case_id": case_id,
+            "container_name": container_result.get('container_name', ''),
+            "timestamp": datetime.now().isoformat(),
+            "status": "executing"
+        })
         
         # 初始化状态
         state = {
@@ -1419,10 +1551,30 @@ async def execute_single_test_case(
         
         # 加载指定的测试用例
         log.info(f"加载测试用例: {case_id}")
+        
+        # 发送加载测试用例消息
+        await manager.send_json(case_id, {
+            "event": "loading_testcase",
+            "message": "正在加载测试用例...",
+            "case_id": case_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "executing"
+        })
+        
         load_result = load_test_cases(state)
         if not load_result or load_result.get("status") == "error":
             error_msg = f"加载测试用例失败: {load_result.get('errors', ['未知错误'])}"
             log.error(error_msg)
+            
+            # 发送测试用例加载失败消息
+            await manager.send_json(case_id, {
+                "event": "loading_failed",
+                "message": error_msg,
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
+            
             return {
                 "message": error_msg,
                 "success": False,
@@ -1438,8 +1590,19 @@ async def execute_single_test_case(
         test_cases = load_result.get('test_cases', [])
         if not test_cases:
             log.error(f"未找到测试用例: {case_id}")
+            error_msg = f"未找到测试用例: {case_id}"
+            
+            # 发送测试用例未找到消息
+            await manager.send_json(case_id, {
+                "event": "testcase_not_found",
+                "message": error_msg,
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
+            
             return {
-                "message": f"未找到测试用例: {case_id}",
+                "message": error_msg,
                 "success": False,
                 "task_id": task_id,
                 "cases_total": 1,
@@ -1447,10 +1610,20 @@ async def execute_single_test_case(
                 "cases_passed": 0,
                 "cases_failed": 1,
                 "execution_time": time.time() - start_time,
-                "error": f"未找到测试用例: {case_id}"
+                "error": error_msg
             }
             
         log.info(f"成功加载测试用例: {case_id}")
+        
+        # 发送测试用例加载成功消息
+        await manager.send_json(case_id, {
+            "event": "testcase_loaded",
+            "message": "测试用例加载成功",
+            "case_id": case_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "executing"
+        })
+        
         # 使用字典合并更新state，保留原始字段
         state = {
             **state,
@@ -1460,29 +1633,90 @@ async def execute_single_test_case(
         try:
             # 解析命令
             log.info(f"解析测试用例命令: {case_id}")
+            
+            # 发送命令解析消息
+            await manager.send_json(case_id, {
+                "event": "parsing_command",
+                "message": "正在解析测试命令...",
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "executing"
+            })
+            
             parse_result = await parse_command(state)
             if not parse_result or parse_result.get("status") != "parsed":
                 error_msg = f"命令解析失败: {case_id}"
                 log.error(error_msg)
                 cases_failed = 1
                 error_message = error_msg
+                
+                # 发送命令解析失败消息
+                await manager.send_json(case_id, {
+                    "event": "parsing_failed",
+                    "message": error_msg,
+                    "case_id": case_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "failed"
+                })
             else:
                 state = parse_result
                 
+                # 发送命令解析成功消息
+                await manager.send_json(case_id, {
+                    "event": "parsing_succeeded",
+                    "message": "命令解析成功，准备执行",
+                    "case_id": case_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "executing"
+                })
+                
                 # 执行命令
                 log.info(f"执行测试用例命令: {case_id}")
+                
+                # 发送命令执行开始消息
+                await manager.send_json(case_id, {
+                    "event": "executing_command",
+                    "message": "正在执行测试命令...",
+                    "case_id": case_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "executing"
+                })
+                
                 execute_result = await execute_command(state)
                 if not execute_result or execute_result.get("status") != "executed":
                     error_msg = f"命令执行失败: {case_id}"
                     log.error(error_msg)
                     cases_failed = 1
                     error_message = error_msg
+                    
+                    # 发送命令执行失败消息
+                    await manager.send_json(case_id, {
+                        "event": "execution_failed",
+                        "message": error_msg,
+                        "case_id": case_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "status": "failed"
+                    })
                 else:
                     state = execute_result
                     
                     # 获取执行结果
                     execution_result = state.get('execution_result', {})
                     success = execution_result.get('success', False)
+                    raw_stdout = execution_result.get('raw_stdout', '')
+                    raw_stderr = execution_result.get('raw_stderr', '')
+                    
+                    # 发送命令执行结果消息
+                    await manager.send_json(case_id, {
+                        "event": "execution_completed",
+                        "message": "命令执行完成",
+                        "case_id": case_id,
+                        "success": success,
+                        "stdout": raw_stdout[:500] + "..." if len(raw_stdout) > 500 else raw_stdout,
+                        "stderr": raw_stderr[:500] + "..." if len(raw_stderr) > 500 else raw_stderr,
+                        "timestamp": datetime.now().isoformat(),
+                        "status": "executing"
+                    })
                     
                     if success:
                         cases_passed = 1
@@ -1492,16 +1726,53 @@ async def execute_single_test_case(
                     
                     # 保存结果
                     log.info(f"保存测试用例结果: {case_id}")
+                    
+                    # 发送保存结果消息
+                    await manager.send_json(case_id, {
+                        "event": "saving_results",
+                        "message": "正在保存测试结果...",
+                        "case_id": case_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "status": "executing"
+                    })
+                    
                     save_result_state = await save_result(state)
                     if not save_result_state:
                         error_msg = f"保存结果失败: {case_id}"
                         log.error(error_msg)
                         if not error_message:
                             error_message = error_msg
+                        
+                        # 发送保存结果失败消息
+                        await manager.send_json(case_id, {
+                            "event": "saving_failed",
+                            "message": error_msg,
+                            "case_id": case_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "status": "executing"
+                        })
+                    else:
+                        # 发送保存结果成功消息
+                        await manager.send_json(case_id, {
+                            "event": "saving_succeeded",
+                            "message": "测试结果已保存",
+                            "case_id": case_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "status": "executing"
+                        })
         except Exception as e:
             log.error(f"处理测试用例 {case_id} 时出错: {str(e)}")
             cases_failed = 1
             error_message = str(e)
+            
+            # 发送执行异常消息
+            await manager.send_json(case_id, {
+                "event": "execution_exception",
+                "message": f"执行过程中发生异常: {str(e)}",
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
         
         # 计算总执行时间
         execution_time = time.time() - start_time
@@ -1530,6 +1801,20 @@ async def execute_single_test_case(
         # 确保start_time已定义
         if 'start_time' not in locals():
             start_time = time.time()
+        
+        # 发送测试失败消息
+        try:
+            await manager.send_json(case_id, {
+                "event": "test_failed",
+                "message": f"执行测试用例时出错: {str(e)}",
+                "case_id": case_id,
+                "task_id": task_id if 'task_id' in locals() else "unknown",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
+        except Exception as ws_error:
+            log.error(f"发送WebSocket消息失败: {str(ws_error)}")
         
         return {
             "message": f"执行测试用例时出错: {str(e)}",
@@ -2661,10 +2946,37 @@ async def execute_test_case(
                         log.error(error_msg)
                         if not error_message:
                             error_message = error_msg
+                        
+                        # 发送保存结果失败消息
+                        await manager.send_json(case_id, {
+                            "event": "saving_failed",
+                            "message": error_msg,
+                            "case_id": case_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "status": "executing"
+                        })
+                    else:
+                        # 发送保存结果成功消息
+                        await manager.send_json(case_id, {
+                            "event": "saving_succeeded",
+                            "message": "测试结果已保存",
+                            "case_id": case_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "status": "executing"
+                        })
         except Exception as e:
             log.error(f"处理测试用例 {case_id} 时出错: {str(e)}")
             cases_failed = 1
             error_message = str(e)
+            
+            # 发送执行异常消息
+            await manager.send_json(case_id, {
+                "event": "execution_exception",
+                "message": f"执行过程中发生异常: {str(e)}",
+                "case_id": case_id,
+                "timestamp": datetime.now().isoformat(),
+                "status": "failed"
+            })
         
         # 计算总执行时间
         execution_time = time.time() - start_time
@@ -2705,3 +3017,68 @@ async def execute_test_case(
             "execution_time": time.time() - start_time,
             "error": str(e)
         }
+
+# 添加删除任务的API接口
+@router.delete("/tasks/{task_id}", response_model=MessageResponse)
+async def delete_task(
+    task_id: str = Path(..., description="任务ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    删除指定任务及其相关的所有测试用例
+    
+    在删除任务前，会先尝试释放任务关联的Docker容器。
+    
+    - **task_id**: 任务ID
+    
+    返回操作结果
+    """
+    log.info(f"开始删除任务: {task_id}")
+    
+    try:
+        # 1. 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        
+        # 2. 如果任务有关联的Docker容器，先尝试释放容器
+        if task.container_name:
+            log.info(f"任务 {task_id} 有关联的Docker容器，尝试释放: {task.container_name}")
+            try:
+                result = await release_algorithm_container(task_id)
+                if not result["success"]:
+                    log.warning(f"释放Docker容器失败: {result.get('error', '未知错误')}")
+                    # 继续执行删除，不因为容器释放失败而中断整个删除流程
+                else:
+                    log.success(f"Docker容器释放成功: {task.container_name}")
+            except Exception as e:
+                log.error(f"释放Docker容器时出错: {str(e)}")
+                # 继续执行删除，不因为容器释放失败而中断整个删除流程
+        
+        # 3. 删除与任务关联的所有测试用例
+        test_cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
+        test_cases_count = len(test_cases)
+        
+        if test_cases_count > 0:
+            log.info(f"删除任务 {task_id} 关联的 {test_cases_count} 个测试用例")
+            for case in test_cases:
+                db.delete(case)
+        
+        # 4. 删除任务记录
+        db.query(DBTestTask).filter(DBTestTask.task_id == task_id).delete()
+        
+        # 5. 提交事务
+        db.commit()
+        
+        log.success(f"任务 {task_id} 删除成功，共删除 {test_cases_count} 个测试用例")
+        
+        return {
+            "message": f"任务 {task_id} 删除成功，共删除 {test_cases_count} 个测试用例",
+            "success": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error(f"删除任务 {task_id} 时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除任务时出错: {str(e)}")

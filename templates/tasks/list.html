@@ -278,6 +278,16 @@
                             <a href="/tasks/${task.task_id}" class="btn btn-icon btn-sm btn-outline-info px-2 py-1" title="查看">
                                 <i class="bi bi-eye"></i>
                             </a>
+                            ${!task.container_name ? 
+                                `<button type="button" class="btn btn-icon btn-sm btn-outline-success px-2 py-1" 
+                                    onclick="startContainer('${task.task_id}')" title="启动容器">
+                                    <i class="bi bi-play-fill"></i>
+                                </button>` : 
+                                `<button type="button" class="btn btn-icon btn-sm btn-outline-secondary px-2 py-1" 
+                                    onclick="stopContainer('${task.task_id}')" title="停止容器">
+                                    <i class="bi bi-stop-fill"></i>
+                                </button>`
+                            }
                             <button type="button" class="btn btn-icon btn-sm btn-outline-danger px-2 py-1" 
                                     onclick="deleteTask('${task.task_id}')" title="删除">
                                 <i class="bi bi-trash"></i>
@@ -470,6 +480,54 @@
         .catch(error => {
             console.error('删除任务失败:', error);
             showNotification('danger', `删除任务失败: ${error.message}`);
+        });
+    }
+    
+    function startContainer(taskId) {
+        if (!confirm('确定要启动此任务的Docker容器吗？')) return;
+        
+        showNotification('info', '正在启动Docker容器，请稍候...');
+        
+        // 调用准备容器的API
+        fetch(`/api/tasks/${taskId}/prepare`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', 'Docker容器已成功启动');
+            } else {
+                showNotification('danger', `启动Docker容器失败: ${data.error || '未知错误'}`);
+            }
+            loadTasks(); // 刷新任务列表
+        })
+        .catch(error => {
+            console.error('启动Docker容器失败:', error);
+            showNotification('danger', `启动Docker容器失败: ${error.message}`);
+        });
+    }
+    
+    function stopContainer(taskId) {
+        if (!confirm('确定要停止此任务的Docker容器吗？')) return;
+        
+        showNotification('info', '正在停止Docker容器，请稍候...');
+        
+        // 调用释放容器的API
+        fetch(`/api/tasks/${taskId}/release-docker`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', 'Docker容器已成功停止');
+            } else {
+                showNotification('danger', `停止Docker容器失败: ${data.error || '未知错误'}`);
+            }
+            loadTasks(); // 刷新任务列表
+        })
+        .catch(error => {
+            console.error('停止Docker容器失败:', error);
+            showNotification('danger', `停止Docker容器失败: ${error.message}`);
         });
     }
     
