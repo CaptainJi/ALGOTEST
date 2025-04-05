@@ -39,17 +39,17 @@
 
             <!-- 任务表格 -->
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-sm table-hover align-middle w-100" style="table-layout: fixed;">
                     <thead>
                         <tr>
-                            <th>任务ID</th>
-                            <th>文档</th>
-                            <th>算法镜像</th>
-                            <th>数据集</th>
-                            <th>用例数</th>
-                            <th>状态</th>
-                            <th>创建时间</th>
-                            <th>操作</th>
+                            <th style="width: 18%">任务ID</th>
+                            <th style="width: 18%">文档</th>
+                            <th style="width: 15%">算法镜像</th>
+                            <th style="width: 15%">数据集</th>
+                            <th style="width: 6%" class="text-center">用例数</th>
+                            <th style="width: 8%" class="text-center">状态</th>
+                            <th style="width: 10%">创建时间</th>
+                            <th style="width: 10%" class="text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody id="tasksTableBody">
@@ -225,34 +225,61 @@
                 'failed': 'danger'
             }[task.status] || 'secondary';
             
+            // 处理任务ID - 只显示前8位和后4位
+            const taskIdShort = task.task_id.length > 12 ? 
+                `${task.task_id.substring(0, 8)}...${task.task_id.slice(-4)}` : 
+                task.task_id;
+                
+            // 处理文档ID - 只显示前8位和后4位
+            const docIdShort = task.document_id && task.document_id.length > 12 ? 
+                `${task.document_id.substring(0, 8)}...${task.document_id.slice(-4)}` : 
+                (task.document_id || '-');
+            
+            // 截短长文本
+            const shortAlgoImage = task.algorithm_image ? 
+                (task.algorithm_image.length > 15 ? 
+                    task.algorithm_image.substring(0, 13) + '...' : 
+                    task.algorithm_image) : 
+                '未配置';
+                
+            const shortDatasetUrl = task.dataset_url ? 
+                (task.dataset_url.length > 15 ? 
+                    task.dataset_url.substring(0, 13) + '...' : 
+                    task.dataset_url) : 
+                '未配置';
+                
+            // 简化的时间格式
+            const dateObj = new Date(task.created_at);
+            const simpleDate = `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+            
             tbody.innerHTML += `
                 <tr>
-                    <td>${task.task_id}</td>
-                    <td>${task.document_id || '-'}</td>
-                    <td>
-                        <small class="text-muted">${task.algorithm_image || '未配置'}</small>
+                    <td class="text-truncate p-2" title="${task.task_id}">${taskIdShort}</td>
+                    <td class="text-truncate p-2" title="${task.document_id || '-'}">${docIdShort}</td>
+                    <td class="text-truncate p-2" title="${task.algorithm_image || '未配置'}">
+                        <small class="text-muted">${shortAlgoImage}</small>
                     </td>
-                    <td>
-                        <small class="text-muted">${task.dataset_url || '未配置'}</small>
+                    <td class="text-truncate p-2" title="${task.dataset_url || '未配置'}">
+                        <small class="text-muted">${shortDatasetUrl}</small>
                     </td>
-                    <td>${task.test_cases_count || 0}</td>
-                    <td>
+                    <td class="text-center p-2">${task.test_cases_count || 0}</td>
+                    <td class="text-center p-2">
                         <span class="badge bg-${statusClass}">
                             ${getStatusText(task.status)}
                         </span>
                     </td>
-                    <td>${formatDate(task.created_at)}</td>
-                    <td>
-                        <div class="btn-group btn-group-sm">
-                            <button type="button" class="btn btn-outline-primary" 
-                                    onclick="openTaskConfig('${task.task_id}')">
+                    <td class="p-2">${simpleDate}</td>
+                    <td class="text-center p-2">
+                        <div class="d-inline-flex gap-1">
+                            <button type="button" class="btn btn-icon btn-sm btn-outline-primary px-2 py-1" 
+                                    onclick="openTaskConfig('${task.task_id}')" title="设置">
                                 <i class="bi bi-gear"></i>
                             </button>
-                            <a href="/tasks/${task.task_id}" class="btn btn-outline-info">
+                            <a href="/tasks/${task.task_id}" class="btn btn-icon btn-sm btn-outline-info px-2 py-1" title="查看">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            <button type="button" class="btn btn-outline-danger" 
-                                    onclick="deleteTask('${task.task_id}')">
+                            <button type="button" class="btn btn-icon btn-sm btn-outline-danger px-2 py-1" 
+                                    onclick="deleteTask('${task.task_id}')" title="删除">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>

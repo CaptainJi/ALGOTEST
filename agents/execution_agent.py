@@ -1074,33 +1074,37 @@ echo "算法镜像: {algorithm_image}"
         
         log.info(f"准备通过MCP执行Docker脚本...")
         
-        # 从配置获取SSE URL
-        sse_url = get_mcp_config()["sse_url"]
-        
         try:
-            # 连接到MCP服务器并执行脚本
-            async with sse_client(sse_url) as (read, write):
-                async with ClientSession(read, write) as session:
-                    # 初始化连接
-                    await session.initialize()
-                    log.info("MCP服务器连接成功")
-                    
-                    # 使用execute_script工具执行Docker脚本
-                    log.info("正在执行Docker配置脚本...")
-                    result = await session.call_tool("execute_script", {"script": script})
-                    
-                    # 检查脚本执行结果
-                    if hasattr(result, 'stderr') and result.stderr:
-                        error_msg = result.stderr
-                        log.error(f"Docker脚本执行出错: {error_msg}")
-                        return {
-                            "success": False,
-                            "task_id": task_id,
-                            "error": f"Docker容器启动失败: {error_msg}"
-                        }
-                    
-                    # 再次检查容器是否真的在运行
-                    verify_script = f"""
+            # 从配置获取SSE URL
+            mcp_config = get_mcp_config()
+            sse_url = mcp_config["sse_url"]
+            
+            # 嵌套多层try-except以更好地处理异常
+            try:
+                # 连接到MCP服务器并执行脚本
+                async with sse_client(sse_url) as (read, write):
+                    try:
+                        async with ClientSession(read, write) as session:
+                            # 初始化连接
+                            await session.initialize()
+                            log.info("MCP服务器连接成功")
+                            
+                            # 使用execute_script工具执行Docker脚本
+                            log.info("正在执行Docker配置脚本...")
+                            result = await session.call_tool("execute_script", {"script": script})
+                            
+                            # 检查脚本执行结果
+                            if hasattr(result, 'stderr') and result.stderr:
+                                error_msg = result.stderr
+                                log.error(f"Docker脚本执行出错: {error_msg}")
+                                return {
+                                    "success": False,
+                                    "task_id": task_id,
+                                    "error": f"Docker容器启动失败: {error_msg}"
+                                }
+                            
+                            # 再次检查容器是否真的在运行
+                            verify_script = f"""
 container_status=$(docker inspect -f '{{{{.State.Running}}}}' {container_name} 2>/dev/null || echo "false")
 if [ "$container_status" != "true" ]; then
     echo "容器状态检查失败: 未运行"
@@ -1108,72 +1112,88 @@ if [ "$container_status" != "true" ]; then
 fi
 echo "容器状态检查成功: 正在运行"
 """
-                    
-                    try:
-                        # 等待容器完全启动
-                        await asyncio.sleep(3)
-                        # 验证容器状态
-                        verify_result = await session.call_tool("execute_script", {"script": verify_script})
-                        
-                        if hasattr(verify_result, 'stderr') and verify_result.stderr:
-                            error_msg = verify_result.stderr
-                            log.error(f"容器状态验证失败: {error_msg}")
-                            return {
-                                "success": False,
-                                "task_id": task_id,
-                                "error": f"容器启动后未正常运行: {error_msg}"
-                            }
-                        
-                        # 检查验证脚本输出
-                        if hasattr(verify_result, 'stdout') and "容器状态检查成功" not in verify_result.stdout:
-                            error_msg = verify_result.stdout
-                            log.error(f"容器状态验证未通过: {error_msg}")
-                            return {
-                                "success": False,
-                                "task_id": task_id,
-                                "error": f"容器状态验证未通过: {error_msg}"
-                            }
-                        
-                        log.info(f"Docker容器验证成功: {container_name}")
-                        
-                        # 更新数据库中的容器名称
-                        with get_db() as db:
-                            task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
-                            if task:
-                                task.container_name = container_name
-                                db.commit()
-                                log.info(f"已更新数据库中的容器名称: {container_name}")
-                        
-                    except Exception as e:
-                        error_msg = str(e)
-                        log.error(f"验证容器状态时出错: {error_msg}")
+                            
+                            try:
+                                # 等待容器完全启动
+                                await asyncio.sleep(3)
+                                # 验证容器状态
+                                verify_result = await session.call_tool("execute_script", {"script": verify_script})
+                                
+                                if hasattr(verify_result, 'stderr') and verify_result.stderr:
+                                    error_msg = verify_result.stderr
+                                    log.error(f"容器状态验证失败: {error_msg}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": f"容器启动后未正常运行: {error_msg}"
+                                    }
+                                
+                                # 检查验证脚本输出
+                                if hasattr(verify_result, 'stdout') and "容器状态检查成功" not in verify_result.stdout:
+                                    error_msg = verify_result.stdout
+                                    log.error(f"容器状态验证未通过: {error_msg}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": f"容器状态验证未通过: {error_msg}"
+                                    }
+                                
+                                log.info(f"Docker容器验证成功: {container_name}")
+                                
+                                # 更新数据库中的容器名称
+                                try:
+                                    with get_db() as db:
+                                        task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+                                        if task:
+                                            task.container_name = container_name
+                                            db.commit()
+                                            log.info(f"已更新数据库中的容器名称: {container_name}")
+                                except Exception as db_error:
+                                    log.error(f"更新数据库容器名称时出错: {str(db_error)}")
+                                    # 继续执行，即使数据库更新失败
+                                
+                                log.info(f"Docker容器设置完成: {container_name}")
+                                
+                                return {
+                                    "success": True,
+                                    "task_id": task_id,
+                                    "container_name": container_name,
+                                    "algorithm_image": algorithm_image,
+                                    "dataset_url": dataset_url,
+                                    "result": {
+                                        "stdout": result.stdout if hasattr(result, "stdout") else str(result),
+                                        "stderr": result.stderr if hasattr(result, "stderr") else ""
+                                    }
+                                }
+                                
+                            except Exception as verify_error:
+                                error_msg = str(verify_error)
+                                log.error(f"验证容器状态时出错: {error_msg}")
+                                return {
+                                    "success": False,
+                                    "task_id": task_id,
+                                    "error": f"验证容器状态时出错: {error_msg}"
+                                }
+                    except Exception as session_error:
+                        log.error(f"MCP会话错误: {str(session_error)}")
                         return {
                             "success": False,
                             "task_id": task_id,
-                            "error": f"验证容器状态时出错: {error_msg}"
+                            "error": f"MCP会话错误: {str(session_error)}"
                         }
-                    
-                    log.info(f"Docker容器设置完成: {container_name}")
-                    
-                    return {
-                        "success": True,
-                        "task_id": task_id,
-                        "container_name": container_name,
-                        "algorithm_image": algorithm_image,
-                        "dataset_url": dataset_url,
-                        "result": {
-                            "stdout": result.stdout if hasattr(result, "stdout") else str(result),
-                            "stderr": result.stderr if hasattr(result, "stderr") else ""
-                        }
-                    }
-                    
-        except Exception as e:
-            error_msg = str(e)
-            log.error(f"MCP服务器操作失败: {error_msg}")
+            except Exception as sse_error:
+                log.error(f"SSE客户端连接错误: {str(sse_error)}")
+                return {
+                    "success": False,
+                    "task_id": task_id,
+                    "error": f"SSE客户端连接错误: {str(sse_error)}"
+                }
+        except Exception as mcp_error:
+            log.error(f"MCP配置或操作失败: {str(mcp_error)}")
             return {
                 "success": False,
                 "task_id": task_id,
-                "error": f"MCP服务器操作失败: {error_msg}"
+                "error": f"MCP配置或操作失败: {str(mcp_error)}"
             }
             
     except Exception as e:

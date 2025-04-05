@@ -1138,86 +1138,69 @@ async def execute_task_tests(
     task_id: str = Path(..., description="任务ID")
 ):
     """
-    执行测试任务的所有测试用例
+    执行任务中的所有测试用例
     
-    该接口会执行指定任务的所有测试用例，并自动完成测试用例的加载、命令解析、命令执行和结果保存等步骤。
+    该接口会执行指定任务中的所有测试用例，并返回执行结果。
     在执行之前会检查：
     1. Docker容器是否已设置
-    2. 所有测试用例是否都已设置测试数据
+    2. 测试用例是否已设置测试数据
     
     - **task_id**: 任务ID
     
-    返回测试执行结果，包括测试用例的执行情况统计
+    返回测试执行结果
     """
     log.info(f"开始执行任务测试: {task_id}")
     
-    start_time = time.time()
-    
     try:
-        # 获取任务信息验证
+        # 记录开始时间
+        start_time = time.time()
+        
+        # 获取任务信息
         task = get_test_task(task_id)
         if not task:
-            log.error(f"任务不存在: {task_id}")
-            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
-        
-        # 检查Docker容器是否已设置，如果未设置则自动设置默认容器名称
-        if not task.container_name:
-            log.warning(f"任务 {task_id} 未设置Docker容器，尝试自动设置默认容器名称")
+            raise HTTPException(status_code=404, detail=f"测试任务不存在: {task_id}")
             
-            # 检查是否设置了算法镜像
-            if not task.algorithm_image:
-                log.error(f"任务 {task_id} 未配置算法镜像，无法自动设置容器")
-                raise HTTPException(status_code=400, detail="未配置算法镜像，请先设置算法镜像后再执行测试")
-                
-            # 设置默认容器名称
-            default_container_name = f"algotest_{task_id}"
-            log.info(f"为任务 {task_id} 设置默认容器名称: {default_container_name}")
+        # 确保容器已准备就绪 
+        log.info(f"确保容器已准备就绪: {task_id}")
+        container_result = await ensure_container_ready(task_id)
+        if not container_result["success"]:
+            error_msg = container_result.get('error', '未知错误')
+            log.error(f"容器准备失败: {error_msg}")
+            return {
+                "message": f"容器准备失败: {error_msg}",
+                "success": False,
+                "task_id": task_id,
+                "cases_total": 0,
+                "cases_executed": 0,
+                "cases_passed": 0,
+                "cases_failed": 0,
+                "execution_time": time.time() - start_time,
+                "error": error_msg
+            }
             
-            # 更新任务的容器名称
-            update_task_container_name(task_id, default_container_name)
-            
-            # 重新获取更新后的任务信息
-            task = get_test_task(task_id)
-            log.info(f"已为任务 {task_id} 自动设置容器名称: {task.container_name}")
-        
-        # 检查所有测试用例是否都设置了测试数据
-        with get_db() as db:
-            cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
-            missing_data_cases = []
-            
-            for case in cases:
-                if not case.test_data:
-                    missing_data_cases.append(case.case_id)
-            
-            if missing_data_cases:
-                error_message = f"以下测试用例未设置测试数据: {', '.join(missing_data_cases)}"
-                log.error(error_message)
-                raise HTTPException(
-                    status_code=400,
-                    detail=error_message
-                )
+        log.info(f"容器已准备就绪: {container_result.get('container_name')}")
         
         # 初始化状态
         state = {
             "task_id": task_id,
             "current_case_index": 0,
-            "test_cases": [],
-            "command_strategies": None, 
             "current_strategy_index": 0,
+            "test_cases": [],
+            "command_strategies": None,
             "status": "created",
             "errors": [],
-            "container_ready": True  # 假设容器已准备好
+            "container_ready": True  # 容器已准备好
         }
         
-        # 统计数据
+        # 统计变量
         cases_total = 0
         cases_executed = 0
         cases_passed = 0
         cases_failed = 0
         error_messages = []
         
-        # 第一步：加载测试用例
-        log.info(f"步骤1: 加载测试用例 - 任务ID: {task_id}")
+        # 加载测试用例
+        log.info(f"加载测试用例: {task_id}")
         load_result = load_test_cases(state)
         if not load_result or load_result.get("status") == "error":
             error_msg = f"加载测试用例失败: {load_result.get('errors', ['未知错误'])}"
@@ -1343,6 +1326,10 @@ async def execute_task_tests(
         import traceback
         log.error(traceback.format_exc())
         
+        # 确保start_time已定义
+        if 'start_time' not in locals():
+            start_time = time.time()
+        
         return {
             "message": f"执行测试任务时出错: {str(e)}",
             "success": False,
@@ -1375,9 +1362,10 @@ async def execute_single_test_case(
     """
     log.info(f"开始执行单个测试用例: {case_id}")
     
-    start_time = time.time()
-    
     try:
+        # 记录开始时间
+        start_time = time.time()
+        
         # 获取测试用例信息
         case = db.query(DBTestCase).filter(DBTestCase.case_id == case_id).first()
         if not case:
@@ -1391,14 +1379,6 @@ async def execute_single_test_case(
         if not task:
             raise HTTPException(status_code=404, detail=f"关联的任务不存在: {task_id}")
             
-        # 检查Docker容器是否已设置
-        if not task.container_name:
-            log.error(f"任务 {task_id} 未设置Docker容器")
-            raise HTTPException(
-                status_code=400, 
-                detail="请先设置Docker容器后再执行测试"
-            )
-            
         # 检查测试数据是否已设置
         if not case.test_data:
             log.error(f"测试用例 {case_id} 未设置测试数据")
@@ -1406,6 +1386,19 @@ async def execute_single_test_case(
                 status_code=400,
                 detail="请先设置测试数据后再执行测试"
             )
+        
+        # 确保容器已准备就绪
+        log.info(f"确保容器已准备就绪: {task_id}")
+        container_result = await ensure_container_ready(task_id)
+        if not container_result["success"]:
+            error_msg = container_result.get('error', '未知错误')
+            log.error(f"容器准备失败: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"容器准备失败: {error_msg}"
+            )
+        
+        log.info(f"容器已准备就绪: {container_result.get('container_name')}")
         
         # 初始化状态
         state = {
@@ -1417,7 +1410,7 @@ async def execute_single_test_case(
             "current_strategy_index": 0,
             "status": "created",
             "errors": [],
-            "container_ready": True  # 假设容器已准备好
+            "container_ready": True  # 容器已准备好
         }
         
         cases_passed = 0
@@ -1534,10 +1527,14 @@ async def execute_single_test_case(
         import traceback
         log.error(traceback.format_exc())
         
+        # 确保start_time已定义
+        if 'start_time' not in locals():
+            start_time = time.time()
+        
         return {
             "message": f"执行测试用例时出错: {str(e)}",
             "success": False,
-            "task_id": "unknown",
+            "task_id": task_id if 'task_id' in locals() else "unknown",
             "cases_total": 1,
             "cases_executed": 0,
             "cases_passed": 0,
@@ -2419,3 +2416,292 @@ async def dashboard_distribution(
     except Exception as e:
         log.error(f"获取仪表盘分布数据失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取仪表盘分布数据失败: {str(e)}")
+
+# 添加一个执行用例前的容器检查和准备函数
+async def ensure_container_ready(task_id: str) -> Dict[str, Any]:
+    """
+    确保测试任务的容器已经准备好
+    
+    如果容器不存在或未运行，则尝试创建新容器
+    
+    Args:
+        task_id: 测试任务ID
+        
+    Returns:
+        容器准备结果，包含success标志
+    """
+    log.info(f"检查任务 {task_id} 的容器是否准备就绪")
+    
+    try:
+        # 从数据库获取任务信息
+        task = get_test_task(task_id)
+        if not task:
+            log.error(f"任务不存在: {task_id}")
+            return {"success": False, "error": f"任务不存在: {task_id}"}
+        
+        container_name = task.container_name
+        
+        # 如果数据库中没有容器名称记录，直接创建新容器
+        if not container_name:
+            log.info(f"数据库中没有容器名称记录，创建新容器")
+            result = await setup_algorithm_container(task_id)
+            return result
+        
+        # 如果有容器名称记录，检查容器是否存在且运行中
+        # 构建检查脚本
+        script = f"""
+container_status=$(docker inspect -f '{{{{.State.Running}}}}' {container_name} 2>/dev/null || echo "no_such_container")
+if [ "$container_status" = "no_such_container" ]; then
+    echo "容器不存在: {container_name}"
+    exit 1
+elif [ "$container_status" != "true" ]; then
+    echo "容器存在但未运行: {container_name}"
+    exit 2
+else
+    echo "容器运行中: {container_name}"
+    exit 0
+fi
+"""
+        
+        log.info(f"检查容器状态: {container_name}")
+        
+        try:
+            # 从配置获取SSE URL
+            mcp_config = get_mcp_config()
+            sse_url = mcp_config["sse_url"]
+            
+            # 连接到MCP服务器并执行检查脚本
+            try:
+                async with sse_client(sse_url) as (read, write):
+                    try:
+                        async with ClientSession(read, write) as session:
+                            # 初始化连接
+                            await session.initialize()
+                            
+                            # 执行检查脚本
+                            result = await session.call_tool("execute_script", {"script": script})
+                            
+                            # 检查脚本退出码
+                            exit_code = -1
+                            if hasattr(result, 'exit_code'):
+                                exit_code = result.exit_code
+                            
+                            # 退出码: 0=容器运行中, 1=容器不存在, 2=容器未运行
+                            if exit_code == 0:
+                                log.info(f"容器已运行: {container_name}")
+                                return {"success": True, "container_name": container_name}
+                            
+                            log.warning(f"容器状态异常，需要重新创建: exit_code={exit_code}")
+                            
+                            # 尝试强制释放旧容器（如果存在）
+                            release_script = f"""
+docker stop {container_name} 2>/dev/null || true
+docker rm -f {container_name} 2>/dev/null || true
+echo "容器已释放"
+"""
+                            await session.call_tool("execute_script", {"script": release_script})
+                    except Exception as session_error:
+                        log.error(f"MCP会话错误: {str(session_error)}")
+                        raise Exception(f"MCP会话错误: {str(session_error)}")
+            except Exception as sse_error:
+                log.error(f"SSE客户端连接错误: {str(sse_error)}")
+                raise Exception(f"SSE客户端连接错误: {str(sse_error)}")
+                
+        except Exception as mcp_error:
+            log.error(f"MCP操作失败: {str(mcp_error)}")
+            return {"success": False, "error": f"MCP操作失败: {str(mcp_error)}"}
+        
+        # 创建新容器
+        log.info(f"创建新容器")
+        return await setup_algorithm_container(task_id)
+        
+    except Exception as e:
+        log.error(f"检查容器状态时出错: {str(e)}")
+        return {"success": False, "error": f"检查容器状态时出错: {str(e)}"}
+
+
+@router.post("/tasks/{task_id}/execute-case/{case_id}", response_model=TestExecutionResponse)
+async def execute_test_case(
+    task_id: str = Path(..., description="任务ID"),
+    case_id: str = Path(..., description="测试用例ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    执行单个测试用例
+    
+    - **task_id**: 任务ID
+    - **case_id**: 测试用例ID
+    
+    返回测试执行结果
+    """
+    log.info(f"执行单个测试用例: 任务ID={task_id}, 用例ID={case_id}")
+    
+    try:
+        # 记录开始时间
+        start_time = time.time()
+        
+        # 检查测试用例是否存在
+        case = db.query(DBTestCase).filter(DBTestCase.case_id == case_id).first()
+        if not case:
+            raise HTTPException(status_code=404, detail=f"测试用例不存在: {case_id}")
+        
+        # 检查测试用例是否属于指定任务
+        if case.task_id != task_id:
+            raise HTTPException(status_code=400, detail=f"测试用例 {case_id} 不属于任务 {task_id}")
+        
+        # 检查测试数据是否已设置
+        if not case.test_data:
+            raise HTTPException(status_code=400, detail=f"测试用例 {case_id} 未设置测试数据")
+        
+        # 检查算法容器是否准备就绪
+        container_result = await ensure_container_ready(task_id)
+        if not container_result["success"]:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"容器准备失败: {container_result.get('error', '未知错误')}"
+            )
+            
+        log.info(f"容器已准备就绪: {container_result.get('container_name')}")
+        
+        # 初始化状态
+        state = {
+            "task_id": task_id,
+            "case_id": case_id,  # 指定测试用例ID
+            "current_case_index": 0,
+            "test_cases": [],
+            "command_strategies": None, 
+            "current_strategy_index": 0,
+            "status": "created",
+            "errors": [],
+            "container_ready": True  # 假设容器已准备好
+        }
+        
+        cases_passed = 0
+        cases_failed = 0
+        error_message = None
+        
+        # 加载指定的测试用例
+        log.info(f"加载测试用例: {case_id}")
+        load_result = load_test_cases(state)
+        if not load_result or load_result.get("status") == "error":
+            error_msg = f"加载测试用例失败: {load_result.get('errors', ['未知错误'])}"
+            log.error(error_msg)
+            return {
+                "message": error_msg,
+                "success": False,
+                "task_id": task_id,
+                "cases_total": 1,
+                "cases_executed": 0,
+                "cases_passed": 0,
+                "cases_failed": 1,
+                "execution_time": time.time() - start_time,
+                "error": error_msg
+            }
+            
+        test_cases = load_result.get('test_cases', [])
+        if not test_cases:
+            log.error(f"未找到测试用例: {case_id}")
+            return {
+                "message": f"未找到测试用例: {case_id}",
+                "success": False,
+                "task_id": task_id,
+                "cases_total": 1,
+                "cases_executed": 0,
+                "cases_passed": 0,
+                "cases_failed": 1,
+                "execution_time": time.time() - start_time,
+                "error": f"未找到测试用例: {case_id}"
+            }
+            
+        log.info(f"成功加载测试用例: {case_id}")
+        # 使用字典合并更新state，保留原始字段
+        state = {
+            **state,
+            **load_result
+        }
+        
+        try:
+            # 解析命令
+            log.info(f"解析测试用例命令: {case_id}")
+            parse_result = await parse_command(state)
+            if not parse_result or parse_result.get("status") != "parsed":
+                error_msg = f"命令解析失败: {case_id}"
+                log.error(error_msg)
+                cases_failed = 1
+                error_message = error_msg
+            else:
+                state = parse_result
+                
+                # 执行命令
+                log.info(f"执行测试用例命令: {case_id}")
+                execute_result = await execute_command(state)
+                if not execute_result or execute_result.get("status") != "executed":
+                    error_msg = f"命令执行失败: {case_id}"
+                    log.error(error_msg)
+                    cases_failed = 1
+                    error_message = error_msg
+                else:
+                    state = execute_result
+                    
+                    # 获取执行结果
+                    execution_result = state.get('execution_result', {})
+                    success = execution_result.get('success', False)
+                    
+                    if success:
+                        cases_passed = 1
+                    else:
+                        cases_failed = 1
+                        error_message = execution_result.get('error', '未知错误')
+                    
+                    # 保存结果
+                    log.info(f"保存测试用例结果: {case_id}")
+                    save_result_state = await save_result(state)
+                    if not save_result_state:
+                        error_msg = f"保存结果失败: {case_id}"
+                        log.error(error_msg)
+                        if not error_message:
+                            error_message = error_msg
+        except Exception as e:
+            log.error(f"处理测试用例 {case_id} 时出错: {str(e)}")
+            cases_failed = 1
+            error_message = str(e)
+        
+        # 计算总执行时间
+        execution_time = time.time() - start_time
+        
+        # 组装最终响应
+        cases_executed = cases_passed + cases_failed
+        message = f"测试用例 {case_id} 执行{'成功' if cases_passed == 1 else '失败'}"
+        log.info(message)
+        
+        return {
+            "message": message,
+            "success": cases_passed == 1,
+            "task_id": task_id,
+            "cases_total": 1,
+            "cases_executed": cases_executed,
+            "cases_passed": cases_passed,
+            "cases_failed": cases_failed,
+            "execution_time": execution_time,
+            "error": error_message
+        }
+    except Exception as e:
+        log.error(f"执行测试用例时出错: {str(e)}")
+        import traceback
+        log.error(traceback.format_exc())
+        
+        # 确保start_time已定义
+        if 'start_time' not in locals():
+            start_time = time.time()
+        
+        return {
+            "message": f"执行测试用例时出错: {str(e)}",
+            "success": False,
+            "task_id": task_id if 'task_id' in locals() else "unknown",
+            "cases_total": 1,
+            "cases_executed": 0,
+            "cases_passed": 0,
+            "cases_failed": 1,
+            "execution_time": time.time() - start_time,
+            "error": str(e)
+        }

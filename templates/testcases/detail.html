@@ -222,7 +222,7 @@
                     <span>关联文档</span>
                     ${data.document_id ? 
                         `<a href="/documents/${data.document_id}" class="badge bg-primary text-decoration-none">
-                            ${data.document_id.substring(0, 8)}
+                            ${data.document_id ? data.document_id.substring(0, 8) : '未知ID'}
                         </a>` : 
                         '<span class="badge bg-secondary">无</span>'
                     }

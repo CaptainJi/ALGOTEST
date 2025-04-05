@@ -19,7 +19,7 @@
     <div class="row mb-3">
         <div class="col-md-8">
             <div class="input-group">
-                <input type="text" class="form-control" id="searchInput" placeholder="搜索用例...">
+                <input type="text" class="form-control" id="searchInput" placeholder="搜索用例或任务...">
                 <button class="btn btn-outline-secondary" type="button" id="searchBtn">
                     <i class="bi bi-search"></i>
                 </button>
@@ -36,38 +36,17 @@
         </div>
     </div>
 
-    <!-- 用例列表 -->
+    <!-- 任务和用例列表 -->
     <div class="card">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th width="40px">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="selectAllCases">
-                                </div>
-                            </th>
-                            <th>ID</th>
-                            <th>名称</th>
-                            <th>测试目的</th>
-                            <th>测试数据</th>
-                            <th>状态</th>
-                            <th>所属任务</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="testCasesTableBody">
-                        <tr>
-                            <td colspan="8" class="text-center py-4">
-                                <div class="spinner-border spinner-border-sm text-secondary" role="status">
-                                    <span class="visually-hidden">加载中...</span>
-                                </div>
-                                <span class="ms-2">加载测试用例...</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="taskAccordion" class="accordion">
+                <!-- 任务列表将在这里动态加载 -->
+                <div class="text-center py-4" id="loadingIndicator">
+                    <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <span class="ms-2">加载任务和测试用例...</span>
+                </div>
             </div>
         </div>
     </div>
@@ -137,6 +116,7 @@
 <script>
     let selectedCases = new Set();
     let testCases = [];
+    let tasksData = [];
     let batchDataModal = null;
     let editCaseModal = null;
     
@@ -145,8 +125,8 @@
         batchDataModal = new bootstrap.Modal(document.getElementById('batchDataModal'));
         editCaseModal = new bootstrap.Modal(document.getElementById('editCaseModal'));
         
-        // 加载测试用例
-        loadTestCases();
+        // 加载任务和测试用例
+        loadTasksWithTestCases();
         
         // 绑定搜索事件
         document.getElementById('searchBtn').addEventListener('click', filterTestCases);
@@ -157,16 +137,6 @@
         // 绑定状态筛选事件
         document.getElementById('statusFilter').addEventListener('change', filterTestCases);
         
-        // 绑定全选事件
-        document.getElementById('selectAllCases').addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.case-checkbox');
-            checkboxes.forEach(cb => {
-                cb.checked = this.checked;
-                toggleCaseSelection(cb.value, cb.checked);
-            });
-            updateBatchButtons();
-        });
-        
         // 绑定批量设置测试数据按钮事件
         document.getElementById('batchDataBtn').addEventListener('click', function() {
             if (selectedCases.size > 0) {
@@ -175,14 +145,22 @@
         });
         
         // 绑定确认批量设置事件
-        document.getElementById('confirmBatchData').addEventListener('click', function() {
-            const testDataPath = document.getElementById('testDataPath').value.trim();
+        document.getElementById('confirmBatchData')?.addEventListener('click', function() {
+            const testDataPathInput = document.getElementById('testDataPath');
+            if (!testDataPathInput) {
+                console.error('测试数据路径输入框不存在');
+                return;
+            }
+            
+            const testDataPath = testDataPathInput.value.trim();
             if (!testDataPath) {
                 showNotification('warning', '请输入测试数据路径');
                 return;
             }
             
-            batchDataModal.hide();
+            if (batchDataModal) {
+                batchDataModal.hide();
+            }
             
             fetch('/api/testcases/batch-set-data', {
                 method: 'POST',
@@ -197,8 +175,10 @@
             .then(response => response.json())
             .then(data => {
                 showNotification('success', '测试数据设置成功');
-                document.getElementById('testDataPath').value = '';
-                loadTestCases();
+                if (testDataPathInput) {
+                    testDataPathInput.value = '';
+                }
+                loadTasksWithTestCases();
             })
             .catch(error => {
                 console.error('设置测试数据失败:', error);
@@ -207,7 +187,7 @@
         });
         
         // 绑定智能分配测试数据按钮事件
-        document.getElementById('selectImagesBtn').addEventListener('click', function() {
+        document.getElementById('selectImagesBtn')?.addEventListener('click', function() {
             if (selectedCases.size === 0) {
                 showNotification('warning', '请先选择测试用例');
                 return;
@@ -218,6 +198,8 @@
             }
             
             const btn = this;
+            if (!btn) return;
+            
             const originalText = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 处理中...';
@@ -236,49 +218,202 @@
             .then(response => response.json())
             .then(data => {
                 showNotification('success', '测试数据分配成功');
-                loadTestCases();
+                loadTasksWithTestCases();
             })
             .catch(error => {
                 console.error('分配测试数据失败:', error);
-                showNotification('danger', `分配测试数据失败: ${error.message}`);
+                showNotification('danger', `分配测试数据失败: ${error.message || '未知错误'}`);
             })
             .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
             });
         });
     });
     
-    function loadTestCases() {
-        fetch('/api/testcases')
+    function loadTasksWithTestCases() {
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'block';
+        }
+        
+        fetch('/api/testcases/tasks')
             .then(response => response.json())
             .then(data => {
-                testCases = data.test_cases || [];
-                renderTestCases(testCases);
+                tasksData = data.tasks || [];
+                testCases = [];
+                
+                // 提取所有测试用例到平面数组
+                tasksData.forEach(task => {
+                    if (task.test_cases && task.test_cases.length > 0) {
+                        task.test_cases.forEach(testCase => {
+                            // 添加任务信息到测试用例
+                            testCase.task_id = task.task_id;
+                            testCases.push(testCase);
+                        });
+                    }
+                });
+                
+                renderTasksWithTestCases(tasksData);
+                
+                // 更新批量处理按钮状态
+                updateBatchButtons();
+                
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = 'none';
+                }
             })
             .catch(error => {
-                console.error('获取测试用例失败:', error);
-                showNotification('danger', `获取测试用例失败: ${error.message}`);
+                console.error('获取任务和测试用例失败:', error);
+                showNotification('danger', `获取任务和测试用例失败: ${error.message}`);
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = 'none';
+                }
             });
     }
     
-    function renderTestCases(casesToRender) {
-        const tbody = document.getElementById('testCasesTableBody');
-        tbody.innerHTML = '';
+    function renderTasksWithTestCases(tasks) {
+        const accordion = document.getElementById('taskAccordion');
+        if (!accordion) {
+            console.error('未找到taskAccordion元素');
+            return;
+        }
         
-        if (casesToRender.length === 0) {
-            tbody.innerHTML = `
+        accordion.innerHTML = '';
+        
+        if (!tasks || tasks.length === 0) {
+            accordion.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="bi bi-inbox text-muted"></i>
+                    <span class="ms-2">暂无任务和测试用例</span>
+                </div>
+            `;
+            return;
+        }
+        
+        tasks.forEach((task, index) => {
+            const hasTestCases = task.test_cases && task.test_cases.length > 0;
+            const taskStatusClass = getTaskStatusBadgeClass(task.status);
+            const taskStatusText = getTaskStatusText(task.status);
+            
+            const accordionItem = document.createElement('div');
+            accordionItem.className = 'accordion-item';
+            accordionItem.innerHTML = `
+                <h2 class="accordion-header" id="heading${index}">
+                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" 
+                            type="button" 
+                            data-bs-toggle="collapse" 
+                            data-bs-target="#collapse${index}" 
+                            aria-expanded="${index === 0 ? 'true' : 'false'}" 
+                            aria-controls="collapse${index}">
+                        <div class="d-flex align-items-center w-100">
+                            <span class="badge bg-light text-dark me-2">
+                                ${task.task_id ? task.task_id.substring(0, 8) : '未知ID'}
+                            </span>
+                            <span class="badge bg-${taskStatusClass} me-2">${taskStatusText}</span>
+                            <span class="me-auto">测试用例数: ${task.test_cases_count || 0}</span>
+                            <small class="text-muted ms-2">${formatDate(task.created_at)}</small>
+                        </div>
+                    </button>
+                </h2>
+                <div id="collapse${index}" 
+                     class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                     aria-labelledby="heading${index}">
+                    <div class="accordion-body">
+                        ${hasTestCases ? `
+                            <div class="form-check mb-3">
+                                <input class="form-check-input task-select-all" 
+                                       type="checkbox" 
+                                       id="selectAllInTask${index}" 
+                                       data-task-index="${index}">
+                                <label class="form-check-label" for="selectAllInTask${index}">
+                                    全选此任务下的测试用例
+                                </label>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th width="40px">
+                                                <div class="form-check">
+                                                    <input class="form-check-input visually-hidden" type="checkbox" disabled>
+                                                </div>
+                                            </th>
+                                            <th>ID</th>
+                                            <th>名称</th>
+                                            <th>测试目的</th>
+                                            <th>测试数据</th>
+                                            <th>状态</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${renderTaskTestCases(task.test_cases, index)}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : `
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                该任务下暂无测试用例
+                            </div>
+                        `}
+                    </div>
+                </div>
+            `;
+            
+            accordion.appendChild(accordionItem);
+        });
+        
+        // 绑定任务全选事件
+        document.querySelectorAll('.task-select-all').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const taskIndex = this.dataset.taskIndex;
+                const task = tasksData[taskIndex];
+                const checkboxes = document.querySelectorAll(`.case-checkbox-task-${taskIndex}`);
+                
+                checkboxes.forEach(cb => {
+                    cb.checked = this.checked;
+                    toggleCaseSelection(cb.value, this.checked);
+                });
+                
+                updateBatchButtons();
+            });
+        });
+        
+        // 绑定复选框事件
+        document.querySelectorAll('.case-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                toggleCaseSelection(this.value, this.checked);
+                updateBatchButtons();
+                
+                // 检查当前任务的全选状态
+                const taskIndex = this.dataset.taskIndex;
+                const checkboxes = document.querySelectorAll(`.case-checkbox-task-${taskIndex}`);
+                const selectAllCheckbox = document.getElementById(`selectAllInTask${taskIndex}`);
+                
+                // 如果所有复选框都选中，则全选框也选中
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                selectAllCheckbox.checked = allChecked;
+            });
+        });
+    }
+    
+    function renderTaskTestCases(cases, taskIndex) {
+        if (!cases || cases.length === 0) {
+            return `
                 <tr>
-                    <td colspan="8" class="text-center py-4">
+                    <td colspan="7" class="text-center py-4">
                         <i class="bi bi-inbox text-muted"></i>
                         <span class="ms-2">暂无测试用例</span>
                     </td>
                 </tr>
             `;
-            return;
         }
         
-        casesToRender.forEach(testCase => {
+        return cases.map(testCase => {
             const statusClass = {
                 'pending': 'secondary',
                 'executing': 'primary',
@@ -286,12 +421,14 @@
                 'failed': 'danger'
             }[testCase.status] || 'secondary';
             
-            tbody.innerHTML += `
+            return `
                 <tr>
                     <td>
                         <div class="form-check">
-                            <input class="form-check-input case-checkbox" type="checkbox" 
+                            <input class="form-check-input case-checkbox case-checkbox-task-${taskIndex}" 
+                                   type="checkbox" 
                                    value="${testCase.case_id}"
+                                   data-task-index="${taskIndex}"
                                    ${selectedCases.has(testCase.case_id) ? 'checked' : ''}>
                         </div>
                     </td>
@@ -313,11 +450,6 @@
                         </span>
                     </td>
                     <td>
-                        <a href="/tasks/${testCase.task_id || '#'}" class="text-decoration-none">
-                            ${testCase.task_id ? testCase.task_id.substring(0, 8) : '未知任务'}
-                        </a>
-                    </td>
-                    <td>
                         <div class="btn-group btn-group-sm">
                             <button type="button" class="btn btn-outline-primary" 
                                     onclick="editCase('${testCase.case_id}')">
@@ -331,24 +463,25 @@
                     </td>
                 </tr>
             `;
-        });
-        
-        // 绑定复选框事件
-        document.querySelectorAll('.case-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                toggleCaseSelection(this.value, this.checked);
-                updateBatchButtons();
-            });
-        });
+        }).join('');
     }
     
     function filterTestCases() {
-        const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
-        const status = document.getElementById('statusFilter').value;
+        const searchInput = document.getElementById('searchInput');
+        const statusFilter = document.getElementById('statusFilter');
         
-        const filteredCases = testCases.filter(testCase => {
+        if (!searchInput || !statusFilter) {
+            console.error('搜索或状态过滤元素不存在');
+            return;
+        }
+        
+        const keyword = searchInput.value.trim().toLowerCase();
+        const status = statusFilter.value;
+        
+        // 过滤测试用例
+        const filteredTestCases = testCases.filter(testCase => {
             const matchesKeyword = !keyword || 
-                testCase.case_id.toLowerCase().includes(keyword) ||
+                (testCase.case_id && testCase.case_id.toLowerCase().includes(keyword)) ||
                 (testCase.name && testCase.name.toLowerCase().includes(keyword)) ||
                 (testCase.purpose && testCase.purpose.toLowerCase().includes(keyword));
                 
@@ -357,7 +490,43 @@
             return matchesKeyword && matchesStatus;
         });
         
-        renderTestCases(filteredCases);
+        // 根据过滤后的测试用例获取任务ID
+        const matchedTaskIds = new Set(filteredTestCases.map(tc => tc.task_id).filter(Boolean));
+        
+        // 只显示包含匹配测试用例的任务
+        const filteredTasks = tasksData.map(task => {
+            if (!task) return null;
+            
+            // 如果任务ID在匹配的集合中，则过滤该任务下的测试用例
+            if (task.task_id && matchedTaskIds.has(task.task_id)) {
+                return {
+                    ...task,
+                    test_cases: Array.isArray(task.test_cases) ? task.test_cases.filter(tc => {
+                        if (!tc) return false;
+                        
+                        const matchesKeyword = !keyword || 
+                            (tc.case_id && tc.case_id.toLowerCase().includes(keyword)) ||
+                            (tc.name && tc.name.toLowerCase().includes(keyword)) ||
+                            (tc.purpose && tc.purpose.toLowerCase().includes(keyword));
+                            
+                        const matchesStatus = !status || tc.status === status;
+                        
+                        return matchesKeyword && matchesStatus;
+                    }) : []
+                };
+            }
+            // 如果任务关键字匹配但没有测试用例匹配，则返回空测试用例列表
+            else if (keyword && task.task_id && task.task_id.toLowerCase().includes(keyword)) {
+                return {
+                    ...task,
+                    test_cases: []
+                };
+            }
+            // 否则返回null表示不显示该任务
+            return null;
+        }).filter(Boolean); // 删除null值
+        
+        renderTasksWithTestCases(filteredTasks);
     }
     
     function toggleCaseSelection(caseId, isSelected) {
@@ -372,27 +541,49 @@
         const batchDataBtn = document.getElementById('batchDataBtn');
         const selectImagesBtn = document.getElementById('selectImagesBtn');
         
-        batchDataBtn.disabled = selectedCases.size === 0;
-        selectImagesBtn.disabled = selectedCases.size === 0;
+        if (batchDataBtn) {
+            batchDataBtn.disabled = selectedCases.size === 0;
+        }
+        
+        if (selectImagesBtn) {
+            selectImagesBtn.disabled = selectedCases.size === 0;
+        }
     }
     
     function editCase(caseId) {
         const testCase = testCases.find(c => c.case_id === caseId);
         if (!testCase) return;
         
-        document.getElementById('editCaseId').value = caseId;
-        document.getElementById('editCaseName').value = testCase.name || '';
-        document.getElementById('editCasePurpose').value = testCase.purpose || '';
-        document.getElementById('editCaseData').value = testCase.test_data || '';
+        const editCaseIdInput = document.getElementById('editCaseId');
+        const editCaseNameInput = document.getElementById('editCaseName');
+        const editCasePurposeInput = document.getElementById('editCasePurpose');
+        const editCaseDataInput = document.getElementById('editCaseData');
         
-        editCaseModal.show();
+        if (editCaseIdInput) editCaseIdInput.value = caseId;
+        if (editCaseNameInput) editCaseNameInput.value = testCase.name || '';
+        if (editCasePurposeInput) editCasePurposeInput.value = testCase.purpose || '';
+        if (editCaseDataInput) editCaseDataInput.value = testCase.test_data || '';
+        
+        if (editCaseModal) {
+            editCaseModal.show();
+        }
     }
     
     function saveCase() {
-        const caseId = document.getElementById('editCaseId').value;
-        const name = document.getElementById('editCaseName').value.trim();
-        const purpose = document.getElementById('editCasePurpose').value.trim();
-        const testData = document.getElementById('editCaseData').value.trim();
+        const editCaseIdInput = document.getElementById('editCaseId');
+        const editCaseNameInput = document.getElementById('editCaseName');
+        const editCasePurposeInput = document.getElementById('editCasePurpose');
+        const editCaseDataInput = document.getElementById('editCaseData');
+        
+        if (!editCaseIdInput || !editCaseNameInput || !editCasePurposeInput || !editCaseDataInput) {
+            console.error('编辑表单元素不存在');
+            return;
+        }
+        
+        const caseId = editCaseIdInput.value;
+        const name = editCaseNameInput.value.trim();
+        const purpose = editCasePurposeInput.value.trim();
+        const testData = editCaseDataInput.value.trim();
         
         if (!name) {
             showNotification('warning', '请输入用例名称');
@@ -414,7 +605,7 @@
         .then(data => {
             editCaseModal.hide();
             showNotification('success', '测试用例已更新');
-            loadTestCases();
+            loadTasksWithTestCases();
         })
         .catch(error => {
             console.error('更新测试用例失败:', error);
@@ -431,7 +622,7 @@
         .then(response => response.json())
         .then(data => {
             showNotification('success', '测试用例已删除');
-            loadTestCases();
+            loadTasksWithTestCases();
         })
         .catch(error => {
             console.error('删除测试用例失败:', error);
@@ -449,7 +640,48 @@
         return statusMap[status] || status;
     }
     
+    function getTaskStatusText(status) {
+        const statusMap = {
+            'created': '已创建',
+            'analyzing': '分析中',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+    
+    function getTaskStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'secondary',
+            'analyzing': 'info',
+            'preparing': 'info',
+            'executing': 'primary',
+            'completed': 'success',
+            'failed': 'danger'
+        };
+        return statusMap[status] || 'secondary';
+    }
+    
+    function formatDate(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
     function showNotification(type, message) {
+        if (!type || !message) {
+            console.error('通知类型或消息不能为空');
+            return;
+        }
+        
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
         alertDiv.style.zIndex = '9999';
@@ -458,11 +690,17 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         
-        document.body.appendChild(alertDiv);
+        document.body?.appendChild(alertDiv);
         
         setTimeout(() => {
-            alertDiv.classList.remove('show');
-            setTimeout(() => alertDiv.remove(), 300);
+            if (alertDiv) {
+                alertDiv.classList.remove('show');
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.parentNode.removeChild(alertDiv);
+                    }
+                }, 300);
+            }
         }, 3000);
     }
 </script>

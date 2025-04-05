@@ -96,7 +96,7 @@
                                     <td>
                                         ${task.document_id ? 
                                             `<a href="/documents/${task.document_id}">${task.document_id.substring(0, 8)}</a>` : 
-                                            '-'
+                                            '未关联文档'
                                         }
                                     </td>
                                     <td>${task.test_cases_count || 0}</td>

@@ -443,7 +443,7 @@
                         ${cases.map(testCase => `
                             <tr>
                                 <td>
-                                    <span class="badge bg-light text-dark">${testCase.id.substring(0, 8)}</span>
+                                    <span class="badge bg-light text-dark">${testCase.id ? testCase.id.substring(0, 8) : '未知ID'}</span>
                                 </td>
                                 <td>${testCase.name}</td>
                                 <td>${truncateText(testCase.purpose, 50)}</td>
@@ -552,7 +552,7 @@
             console.log('测试用例执行已启动:', data);
             
             // 提示用户执行已开始
-            showNotification('success', `测试用例 ${caseId.substring(0, 8)} 执行已开始`);
+            showNotification('success', `测试用例 ${caseId ? caseId.substring(0, 8) : '未知ID'} 执行已开始`);
             
             // 定时刷新页面，获取最新状态
             setTimeout(() => {
@@ -726,7 +726,7 @@
                 if (data.image_examples && data.image_examples.length > 0) {
                     examplesHtml = '<ul class="mt-2 mb-0">' + 
                         data.image_examples.map(([caseId, imagePath]) => 
-                            `<li><small>${caseId.substring(0, 8)}... => ${imagePath}</small></li>`
+                            `<li><small>${caseId ? caseId.substring(0, 8) : '未知ID'}... => ${imagePath}</small></li>`
                         ).join('') + 
                     '</ul>';
                 }
