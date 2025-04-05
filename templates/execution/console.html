@@ -260,7 +260,7 @@
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <span class="small text-muted">${testCase.case_id.substring(0, 8)}</span>
+                        <span class="small text-muted">${testCase.case_id ? testCase.case_id.substring(0, 8) : '未知ID'}</span>
                     </td>
                     <td>${testCase.name || '未命名测试用例'}</td>
                     <td>
@@ -523,13 +523,13 @@
         // 处理新的日志条目
         caseDetails.forEach(detail => {
             if (detail.status === 'pending') {
-                logDiv.innerHTML += `<div class="text-muted">⏳ 用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'}) 待执行</div>`;
+                logDiv.innerHTML += `<div class="text-muted">⏳ 用例 ${detail.case_id ? detail.case_id.substring(0, 8) : '未知ID'} (${detail.name || '未命名'}) 待执行</div>`;
             } else if (detail.status === 'executing') {
-                logDiv.innerHTML += `<div class="text-primary">🔄 正在执行用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'})</div>`;
-            } else if (detail.status === 'completed') {
+                logDiv.innerHTML += `<div class="text-primary">🔄 正在执行用例 ${detail.case_id ? detail.case_id.substring(0, 8) : '未知ID'} (${detail.name || '未命名'})</div>`;
+            } else {
                 const result = detail.is_passed ? '✅ 通过' : '❌ 失败';
                 const color = detail.is_passed ? 'text-success' : 'text-danger';
-                logDiv.innerHTML += `<div class="${color}">用例 ${detail.case_id.substring(0, 8)} (${detail.name || '未命名'}) ${result}</div>`;
+                logDiv.innerHTML += `<div class="${color}">用例 ${detail.case_id ? detail.case_id.substring(0, 8) : '未知ID'} (${detail.name || '未命名'}) ${result}</div>`;
                 
                 if (detail.result_analysis) {
                     logDiv.innerHTML += `<div class="text-muted ps-3 small">分析结果: ${detail.result_analysis}</div>`;

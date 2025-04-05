@@ -335,9 +335,11 @@
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <span class="small text-muted">${result.case_id.substring(0, 8)}</span>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-1">${result.name || '未命名测试用例'}</h6>
+                            <span class="small text-muted">${result.case_id ? result.case_id.substring(0, 8) : '未知ID'}</span>
+                        </div>
                     </td>
-                    <td>${result.name || '未命名测试用例'}</td>
                     <td>
                         <small class="text-muted">${result.test_data || '未设置'}</small>
                     </td>
@@ -478,9 +480,11 @@
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <span class="small text-muted">${result.case_id.substring(0, 8)}</span>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-1">${result.name || '未命名测试用例'}</h6>
+                            <span class="small text-muted">${result.case_id ? result.case_id.substring(0, 8) : '未知ID'}</span>
+                        </div>
                     </td>
-                    <td>${result.name || '未命名测试用例'}</td>
                     <td>
                         <small class="text-muted">${result.test_data || '未设置'}</small>
                     </td>

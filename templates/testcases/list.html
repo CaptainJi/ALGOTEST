@@ -297,7 +297,7 @@
                     </td>
                     <td>
                         <span class="badge bg-light text-dark">
-                            ${testCase.case_id.substring(0, 8)}
+                            ${testCase.case_id ? testCase.case_id.substring(0, 8) : '未知ID'}
                         </span>
                     </td>
                     <td>${testCase.name || '未命名测试用例'}</td>
@@ -313,8 +313,8 @@
                         </span>
                     </td>
                     <td>
-                        <a href="/tasks/${testCase.task_id}" class="text-decoration-none">
-                            ${testCase.task_id.substring(0, 8)}
+                        <a href="/tasks/${testCase.task_id || '#'}" class="text-decoration-none">
+                            ${testCase.task_id ? testCase.task_id.substring(0, 8) : '未知任务'}
                         </a>
                     </td>
                     <td>

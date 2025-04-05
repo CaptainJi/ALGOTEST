@@ -2276,3 +2276,146 @@ async def mcp_status():
             "message": f"检查服务状态时出错: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
+
+# 仪表盘统计数据API
+@router.get("/dashboard/stats", response_model=Dict[str, Any])
+async def dashboard_stats(
+    db: Session = Depends(get_db)
+):
+    """
+    获取仪表盘统计数据
+    
+    返回任务和测试用例的统计信息
+    """
+    try:
+        # 获取总任务数
+        total_tasks = db.query(DBTestTask).count()
+        
+        # 获取总用例数
+        total_cases = db.query(DBTestCase).count()
+        
+        # 计算成功率
+        passed_cases = db.query(DBTestCase).filter(DBTestCase.is_passed == True).count()
+        success_rate = round((passed_cases / total_cases * 100)) if total_cases > 0 else 0
+        
+        # 获取今日执行数
+        today = datetime.now().date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today, datetime.max.time())
+        
+        today_executions = db.query(DBTestCase).filter(
+            DBTestCase.updated_at >= today_start,
+            DBTestCase.updated_at <= today_end,
+            DBTestCase.status == 'completed'
+        ).count()
+        
+        return {
+            "total_tasks": total_tasks,
+            "total_cases": total_cases,
+            "success_rate": success_rate,
+            "today_executions": today_executions
+        }
+    except Exception as e:
+        log.error(f"获取仪表盘统计数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取仪表盘统计数据失败: {str(e)}")
+
+# 仪表盘趋势数据API
+@router.get("/dashboard/trend", response_model=Dict[str, Any])
+async def dashboard_trend(
+    days: int = Query(7, description="查询近几天的数据"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取执行趋势数据
+    
+    - **days**: 查询近几天的数据，默认为7天
+    
+    返回近几天的执行数据趋势
+    """
+    try:
+        # 获取当前日期并计算时间范围
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days-1)
+        
+        # 准备日期标签和数据容器
+        date_labels = []
+        executed_counts = []
+        passed_counts = []
+        
+        # 按日期查询数据
+        current_date = start_date
+        while current_date <= end_date:
+            date_str = current_date.strftime("%m-%d")
+            date_labels.append(date_str)
+            
+            day_start = datetime.combine(current_date, datetime.min.time())
+            day_end = datetime.combine(current_date, datetime.max.time())
+            
+            # 获取当天执行的测试用例数
+            executed_count = db.query(DBTestCase).filter(
+                DBTestCase.created_at >= day_start,
+                DBTestCase.created_at <= day_end,
+                DBTestCase.status == 'completed'
+            ).count()
+            
+            # 获取当天通过的测试用例数
+            passed_count = db.query(DBTestCase).filter(
+                DBTestCase.created_at >= day_start,
+                DBTestCase.created_at <= day_end,
+                DBTestCase.status == 'completed',
+                DBTestCase.is_passed == True
+            ).count()
+            
+            executed_counts.append(executed_count)
+            passed_counts.append(passed_count)
+            
+            current_date += timedelta(days=1)
+        
+        return {
+            "dates": date_labels,
+            "executed": executed_counts,
+            "passed": passed_counts
+        }
+    except Exception as e:
+        log.error(f"获取仪表盘趋势数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取仪表盘趋势数据失败: {str(e)}")
+
+# 仪表盘分布数据API
+@router.get("/dashboard/distribution", response_model=Dict[str, Any])
+async def dashboard_distribution(
+    db: Session = Depends(get_db)
+):
+    """
+    获取测试用例状态分布数据
+    
+    返回测试用例的状态分布统计
+    """
+    try:
+        # 获取通过的测试用例数
+        passed = db.query(DBTestCase).filter(
+            DBTestCase.status == 'completed',
+            DBTestCase.is_passed == True
+        ).count()
+        
+        # 获取失败的测试用例数
+        failed = db.query(DBTestCase).filter(
+            DBTestCase.status == 'completed',
+            DBTestCase.is_passed == False
+        ).count()
+        
+        # 获取待执行的测试用例数
+        pending = db.query(DBTestCase).filter(
+            (DBTestCase.status == 'pending') | 
+            (DBTestCase.status == 'executing') |
+            (DBTestCase.status == None)
+        ).count()
+        
+        return {
+            "passed": passed,
+            "failed": failed,
+            "pending": pending,
+            "status": "success"
+        }
+    except Exception as e:
+        log.error(f"获取仪表盘分布数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取仪表盘分布数据失败: {str(e)}")
