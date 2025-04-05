@@ -1079,19 +1079,34 @@ echo "算法镜像: {algorithm_image}"
             mcp_config = get_mcp_config()
             sse_url = mcp_config["sse_url"]
             
-            # 嵌套多层try-except以更好地处理异常
             try:
                 # 连接到MCP服务器并执行脚本
                 async with sse_client(sse_url) as (read, write):
                     try:
                         async with ClientSession(read, write) as session:
                             # 初始化连接
-                            await session.initialize()
-                            log.info("MCP服务器连接成功")
-                            
+                            try:
+                                await session.initialize()
+                                log.info("MCP服务器连接成功")
+                            except Exception as init_error:
+                                log.error(f"MCP会话初始化失败: {str(init_error)}")
+                                return {
+                                    "success": False,
+                                    "task_id": task_id,
+                                    "error": f"MCP会话初始化失败: {str(init_error)}"
+                                }
+                                
                             # 使用execute_script工具执行Docker脚本
                             log.info("正在执行Docker配置脚本...")
-                            result = await session.call_tool("execute_script", {"script": script})
+                            try:
+                                result = await session.call_tool("execute_script", {"script": script})
+                            except Exception as script_error:
+                                log.error(f"执行Docker配置脚本失败: {str(script_error)}")
+                                return {
+                                    "success": False,
+                                    "task_id": task_id,
+                                    "error": f"执行Docker配置脚本失败: {str(script_error)}"
+                                }
                             
                             # 检查脚本执行结果
                             if hasattr(result, 'stderr') and result.stderr:
@@ -1588,12 +1603,22 @@ async def release_algorithm_container(task_id: str) -> Dict[str, Any]:
         # 从数据库获取任务信息
         task = get_test_task(task_id)
         if not task:
-            raise ValueError(f"测试任务不存在: {task_id}")
+            log.warning(f"测试任务不存在: {task_id}")
+            return {
+                "success": False,
+                "task_id": task_id,
+                "error": f"测试任务不存在: {task_id}"
+            }
         
         # 获取容器名称
         container_name = task.container_name
         if not container_name:
-            raise ValueError(f"任务 {task_id} 未关联Docker容器")
+            log.warning(f"任务 {task_id} 未关联Docker容器")
+            return {
+                "success": True,  # 没有容器也视为成功释放，因为目标状态已达成
+                "task_id": task_id,
+                "message": f"任务 {task_id} 未关联Docker容器"
+            }
         
         # 构建Docker释放脚本
         script = f"""
@@ -1606,8 +1631,8 @@ fi
 
 # 停止并删除容器
 echo "正在停止并删除容器: {container_name}"
-docker stop {container_name} || true
-docker rm -f {container_name} || true
+docker stop {container_name} 2>/dev/null || true
+docker rm -f {container_name} 2>/dev/null || true
 
 # 验证容器是否已被删除
 container_exists=$(docker ps -a --filter name={container_name} -q)
@@ -1621,31 +1646,53 @@ echo "容器已成功删除: {container_name}"
         
         log.info(f"准备通过MCP执行Docker释放脚本...")
         
-        # 从配置获取SSE URL
-        sse_url = get_mcp_config()["sse_url"]
-        
-        # 连接到MCP服务器并执行脚本
-        async with sse_client(sse_url) as (read, write):
-            async with ClientSession(read, write) as session:
-                # 初始化连接
-                await session.initialize()
-                log.info("MCP服务器连接成功")
-                
-                # 使用execute_script工具执行Docker脚本
-                log.info("正在执行Docker释放脚本...")
-                result = await session.call_tool("execute_script", {"script": script})
-                
-                # 检查脚本执行结果
-                if hasattr(result, 'stderr') and result.stderr:
-                    log.error(f"Docker释放脚本执行出错: {result.stderr}")
-                    return {
-                        "success": False,
-                        "task_id": task_id,
-                        "error": f"Docker容器释放失败: {result.stderr}"
-                    }
-                
-                # 验证容器是否真的被删除
-                verify_script = f"""
+        try:
+            # 从配置获取SSE URL
+            mcp_config = get_mcp_config()
+            sse_url = mcp_config["sse_url"]
+            
+            try:
+                # 使用嵌套try-except更精确地处理异常
+                try:
+                    # 连接到MCP服务器并执行脚本
+                    async with sse_client(sse_url) as (read, write):
+                        try:
+                            async with ClientSession(read, write) as session:
+                                # 初始化连接
+                                try:
+                                    await session.initialize()
+                                    log.info("MCP服务器连接成功")
+                                except Exception as init_error:
+                                    log.error(f"MCP会话初始化失败: {str(init_error)}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": f"MCP会话初始化失败: {str(init_error)}"
+                                    }
+                                
+                                # 使用execute_script工具执行Docker脚本
+                                log.info("正在执行Docker释放脚本...")
+                                try:
+                                    result = await session.call_tool("execute_script", {"script": script})
+                                except Exception as script_error:
+                                    log.error(f"执行Docker释放脚本失败: {str(script_error)}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": f"执行Docker释放脚本失败: {str(script_error)}"
+                                    }
+                                
+                                # 检查脚本执行结果
+                                if hasattr(result, 'stderr') and result.stderr:
+                                    log.error(f"Docker释放脚本执行出错: {result.stderr}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": f"Docker容器释放失败: {result.stderr}"
+                                    }
+                                
+                                # 验证容器是否真的被删除
+                                verify_script = f"""
 container_exists=$(docker ps -a --filter name={container_name} -q)
 if [ ! -z "$container_exists" ]; then
     echo "容器仍然存在: {container_name}"
@@ -1653,61 +1700,119 @@ if [ ! -z "$container_exists" ]; then
 fi
 echo "容器验证成功: 已完全删除"
 """
-                
-                try:
-                    # 验证容器状态
-                    verify_result = await session.call_tool("execute_script", {"script": verify_script})
-                    
-                    if hasattr(verify_result, 'stderr') and verify_result.stderr:
-                        log.error(f"容器删除验证失败: {verify_result.stderr}")
-                        return {
-                            "success": False,
-                            "task_id": task_id,
-                            "error": f"容器删除验证失败: {verify_result.stderr}"
-                        }
-                    
-                    # 检查验证脚本输出
-                    if hasattr(verify_result, 'stdout') and "容器验证成功" not in verify_result.stdout:
-                        log.error(f"容器删除验证未通过: {verify_result.stdout}")
-                        return {
-                            "success": False,
-                            "task_id": task_id,
-                            "error": f"容器删除验证未通过: {verify_result.stdout}"
-                        }
-                    
-                    log.info(f"Docker容器删除验证成功: {container_name}")
-                    
-                    # 清除数据库中的容器名称
-                    with get_db() as db:
-                        task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
-                        if task:
-                            task.container_name = None
-                            db.commit()
-                            log.info(f"已清除数据库中的容器名称记录: {task_id}")
-                    
-                except Exception as e:
-                    log.error(f"验证容器删除状态时出错: {str(e)}")
+                                
+                                try:
+                                    # 验证容器状态
+                                    verify_result = await session.call_tool("execute_script", {"script": verify_script})
+                                    
+                                    if hasattr(verify_result, 'stderr') and verify_result.stderr:
+                                        log.error(f"容器删除验证失败: {verify_result.stderr}")
+                                        return {
+                                            "success": False,
+                                            "task_id": task_id,
+                                            "error": f"容器删除验证失败: {verify_result.stderr}"
+                                        }
+                                    
+                                    # 检查验证脚本输出
+                                    if hasattr(verify_result, 'stdout') and "容器验证成功" not in verify_result.stdout:
+                                        log.error(f"容器删除验证未通过: {verify_result.stdout}")
+                                        return {
+                                            "success": False,
+                                            "task_id": task_id,
+                                            "error": f"容器删除验证未通过: {verify_result.stdout}"
+                                        }
+                                    
+                                    log.info(f"Docker容器删除验证成功: {container_name}")
+                                except Exception as verify_error:
+                                    log.error(f"验证容器删除状态时出错: {str(verify_error)}")
+                                    # 即使验证失败，也尝试清除数据库中的容器名称
+                                    log.info(f"跳过验证，尝试清除容器记录: {container_name}")
+                                
+                                # 无论验证是否成功，都尝试清除数据库中的容器名称
+                                try:
+                                    with get_db() as db:
+                                        task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+                                        if task:
+                                            task.container_name = None
+                                            db.commit()
+                                            log.info(f"已清除数据库中的容器名称记录: {task_id}")
+                                except Exception as db_error:
+                                    log.error(f"清除数据库容器记录时出错: {str(db_error)}")
+                                    # 继续执行，不让数据库异常影响整体结果
+                                
+                                log.info(f"Docker容器释放完成: {container_name}")
+                                
+                                return {
+                                    "success": True,
+                                    "task_id": task_id,
+                                    "container_name": container_name,
+                                    "result": {
+                                        "stdout": result.stdout if hasattr(result, "stdout") else str(result),
+                                        "stderr": result.stderr if hasattr(result, "stderr") else ""
+                                    }
+                                }
+                        except Exception as session_error:
+                            log.error(f"MCP会话错误: {str(session_error)}")
+                            # 尝试强制清除容器记录
+                            try_clear_container_record(task_id)
+                            return {
+                                "success": False,
+                                "task_id": task_id,
+                                "error": f"MCP会话错误: {str(session_error)}"
+                            }
+                except Exception as sse_error:
+                    log.error(f"SSE客户端连接错误: {str(sse_error)}")
+                    # 尝试强制清除容器记录
+                    try_clear_container_record(task_id)
                     return {
                         "success": False,
                         "task_id": task_id,
-                        "error": f"验证容器删除状态时出错: {str(e)}"
+                        "error": f"SSE客户端连接错误: {str(sse_error)}"
                     }
-                
-                log.info(f"Docker容器释放完成: {container_name}")
-        
-        return {
-            "success": True,
-            "task_id": task_id,
-            "container_name": container_name,
-            "result": {
-                "stdout": result.stdout if hasattr(result, "stdout") else str(result),
-                "stderr": result.stderr if hasattr(result, "stderr") else ""
+            except Exception as connect_error:
+                log.error(f"连接MCP服务器时出错: {str(connect_error)}")
+                # 尝试强制清除容器记录
+                try_clear_container_record(task_id)
+                return {
+                    "success": False,
+                    "task_id": task_id,
+                    "error": f"连接MCP服务器时出错: {str(connect_error)}"
+                }
+        except Exception as mcp_error:
+            log.error(f"MCP操作准备失败: {str(mcp_error)}")
+            # 尝试强制清除容器记录
+            try_clear_container_record(task_id)
+            return {
+                "success": False,
+                "task_id": task_id,
+                "error": f"MCP操作准备失败: {str(mcp_error)}"
             }
-        }
     except Exception as e:
         log.error(f"释放Docker容器失败: {str(e)}")
+        # 尝试强制清除容器记录
+        try_clear_container_record(task_id)
         return {
             "success": False,
             "task_id": task_id,
             "error": str(e)
         }
+
+
+def try_clear_container_record(task_id: str) -> None:
+    """
+    尝试清除任务的容器记录，无论是否成功都不影响调用方
+    
+    Args:
+        task_id: 任务ID
+    """
+    try:
+        with get_db() as db:
+            task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+            if task and task.container_name:
+                log.info(f"尝试强制清除容器记录: {task.container_name}")
+                task.container_name = None
+                db.commit()
+                log.info(f"已强制清除数据库中的容器名称记录: {task_id}")
+    except Exception as e:
+        log.error(f"强制清除容器记录失败，忽略此错误: {str(e)}")
+        # 不抛出异常，让调用方继续执行
