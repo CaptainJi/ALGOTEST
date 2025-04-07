@@ -16,6 +16,7 @@ from sqlalchemy.sql import text
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import re
 
 from core.config import get_settings, get_llm_config
 from core.database import (
@@ -67,105 +68,48 @@ def analyze_test_results(state: ReportState) -> ReportState:
             # 获取LLM配置
             llm_config = get_llm_config()
             
-            # 构建所有测试用例的信息
-            test_cases_info = []
-            for i, case in enumerate(cases, 1):
-                input_data = case.input_data or {}
-                expected_output = case.expected_output or {}
-                actual_output = case.actual_output
-                
-                # 更详细地展示预期输出和实际输出的内容
-                case_info = f"""
-测试用例 {i}:
-- 用例ID: {case.case_id}
-- 名称: {input_data.get('name', '未命名')}
-- 目的: {input_data.get('purpose', '无')}
-- 测试步骤: {input_data.get('steps', '无')}
-- 预期结果:
-  * 预期输出: {json.dumps(expected_output.get('expected_result', {}), ensure_ascii=False, indent=2)}
-  * 验证方法: {expected_output.get('validation_method', '无')}
-- 实际输出:
-  * 输出内容: {json.dumps(actual_output, ensure_ascii=False, indent=2) if actual_output else '无输出'}
-"""
-                test_cases_info.append(case_info)
-            
-            # 修改提示词，更明确地指导大模型如何进行结果对比
-            prompt = f"""
-请严格分析以下测试用例的执行结果。你需要对比每个测试用例的预期结果和实际输出，判断测试是否通过。
-
-{os.linesep.join(test_cases_info)}
-
-对每个测试用例，请按照以下标准进行分析：
-
-1. 测试是否通过的判断（true/false）：
-   - 实际输出必须完全符合预期结果的要求
-   - 如果实际输出与预期结果有任何不符，则判定为失败
-   - 如果缺少实际输出，则判定为失败
-   - 必须严格按照验证方法中描述的标准进行验证
-
-2. 详细的分析依据，包括：
-   - 列出预期结果和实际输出的具体对比
-   - 说明是否满足验证方法中的每一项要求
-   - 如果测试失败，详细说明不符合预期的具体原因
-
-3. 总结性结论
-
-请按以下JSON格式输出，key为测试用例ID：
-{
-    "test_case_1_id": {
-        "is_passed": true/false,
-        "analysis": "详细的分析过程，包含预期结果和实际输出的具体对比...",
-        "conclusion": "总结性结论..."
-    }
-}
-"""
-            
-            # 调用大模型API
-            log.info("调用大模型API进行批量分析...")
-            result = call_zhipu_api(prompt, llm_config)
-            
-            
-            # 解析返回的JSON
-            try:
-                # 尝试直接解析
-                analysis_results_data = json.loads(result)
-                log.debug(f"大模型API返回结果: {analysis_results_data}")
-            except json.JSONDecodeError:
-                # 如果直接解析失败，尝试从文本中提取JSON
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', result)
-                if json_match:
-                    analysis_results_data = json.loads(json_match.group())
-                    log.debug(f"大模型API返回结果: {analysis_results_data}")
-                else:
-                    raise ValueError("无法解析大模型返回的结果")
-            
-            # 存储分析结果
-            analysis_results = []
-            
-            # 更新每个测试用例的结果
+            # 对每个测试用例，先进行结构化分析
             for case in cases:
-                case_analysis = analysis_results_data.get(case.case_id)
-                if case_analysis:
-                    # 更新测试用例的分析结果
-                    case.result_analysis = case_analysis.get("analysis", "") + "\n\n" + case_analysis.get("conclusion", "")
-                    case.is_passed = case_analysis.get("is_passed", False)
+                # 提取算法输出的关键信息
+                algorithm_results = extract_algorithm_results(case.actual_output)
+                
+                # 进行结构化比较
+                structured_comparison = compare_test_case_with_results(
+                    {"expected_output": case.expected_output}, 
+                    algorithm_results
+                )
+                
+                # 构建丰富的提示词
+                case_prompt = construct_enhanced_prompt(
+                    case, 
+                    algorithm_results,
+                    task_type="安全帽检测"  # 根据算法类型调整
+                )
+                
+                # 调用大模型API
+                llm_result = call_zhipu_api(case_prompt, llm_config)
+                
+                # 解析大模型返回结果
+                try:
+                    llm_analysis = parse_llm_response(llm_result)
+                    
+                    # 用结构化分析增强大模型结果
+                    enhanced_analysis = enhance_llm_results_with_structured_analysis(
+                        llm_analysis, 
+                        structured_comparison
+                    )
+                    
+                    # 更新测试用例结果
+                    case.is_passed = enhanced_analysis["is_passed"]
+                    case.result_analysis = enhanced_analysis["analysis"]
                     case.status = "completed"
                     
-                    # 添加到分析结果列表
-                    analysis_results.append({
-                        "case_id": case.case_id,
-                        "is_passed": case.is_passed,
-                        "result_analysis": case.result_analysis
-                    })
-                    
-                    log.info(f"测试用例 {case.case_id} 分析完成: {'通过' if case.is_passed else '未通过'}")
-                else:
-                    log.warning(f"未找到测试用例 {case.case_id} 的分析结果")
-                    analysis_results.append({
-                        "case_id": case.case_id,
-                        "error": "未找到分析结果"
-                    })
+                except Exception as e:
+                    # 如果大模型分析失败，使用结构化分析结果
+                    log.warning(f"大模型分析失败，使用结构化分析结果: {str(e)}")
+                    case.is_passed = structured_comparison["is_passed"]
+                    case.result_analysis = f"结构化分析结果: {', '.join(structured_comparison['reasons'])}"
+                    case.status = "completed"
             
             # 提交所有更改
             db.commit()
@@ -185,7 +129,14 @@ def analyze_test_results(state: ReportState) -> ReportState:
                     }
                     for case in cases
                 ],
-                "analysis_results": analysis_results,
+                "analysis_results": [
+                    {
+                        "case_id": case.case_id,
+                        "is_passed": case.is_passed,
+                        "result_analysis": case.result_analysis
+                    }
+                    for case in cases
+                ],
                 "status": "analyzed"
             }
             
@@ -524,6 +475,333 @@ async def run_report_generation(task_id: str) -> Dict[str, Any]:
     log.info(f"报告生成Agent运行完成: {task_id}, 状态: {result['status']}")
     
     return result
+
+def extract_algorithm_results(actual_output: str) -> Dict[str, Any]:
+    """
+    从算法输出中提取关键信息，特别关注安全帽检测和警报状态
+    
+    Args:
+        actual_output: 算法原始输出文本
+        
+    Returns:
+        提取的结构化结果
+    """
+    result = {
+        "detected_objects": [],
+        "processing_time": None,
+        "config_params": {},
+        "is_alert": False,  # 新增字段，关注警报状态
+        "alert_reason": None,  # 新增字段，记录警报原因
+        "raw_json_result": None
+    }
+    
+    try:
+        # 提取处理时间
+        processing_time_match = re.search(r'Total processing time: (\d+\.\d+) ms', actual_output)
+        if processing_time_match:
+            result["processing_time"] = float(processing_time_match.group(1))
+        
+        # 提取JSON结果部分
+        json_match = re.search(r'event info:[\s\S]*?json: (\{[\s\S]*?\})\}?I', actual_output)
+        if json_match:
+            try:
+                # 清理JSON字符串中的转义字符
+                json_str = json_match.group(1).replace('\\\\', '\\').replace('\\\t', '\t')
+                json_data = json.loads(json_str)
+                result["raw_json_result"] = json_data
+                
+                # 提取检测到的对象
+                if "model_data" in json_data and "objects" in json_data["model_data"]:
+                    for obj in json_data["model_data"]["objects"]:
+                        result["detected_objects"].append({
+                            "name": obj.get("name", "unknown"),
+                            "confidence": obj.get("confidence", 0),
+                            "coordinates": [
+                                obj.get("x", 0), 
+                                obj.get("y", 0),
+                                obj.get("width", 0),
+                                obj.get("height", 0)
+                            ]
+                        })
+                
+                # 提取配置参数和警报状态
+                if "algorithm_data" in json_data:
+                    result["config_params"] = json_data["algorithm_data"]
+                    
+                    # 特别关注is_alert字段
+                    if "is_alert" in json_data["algorithm_data"]:
+                        result["is_alert"] = json_data["algorithm_data"]["is_alert"]
+                    
+                    # 提取警报原因（如果有）
+                    if "target_info" in json_data["algorithm_data"] and json_data["algorithm_data"]["target_info"]:
+                        alert_objects = []
+                        for target in json_data["algorithm_data"]["target_info"]:
+                            if target.get("is_alert", False):
+                                alert_objects.append(target.get("name", "unknown"))
+                        
+                        if alert_objects:
+                            result["alert_reason"] = f"检测到警报对象: {', '.join(alert_objects)}"
+            except json.JSONDecodeError:
+                pass
+    except Exception as e:
+        log.error(f"提取算法结果时出错: {str(e)}")
+    
+    return result
+
+def compare_test_case_with_results(test_case: Dict[str, Any], algorithm_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    比较测试用例预期与算法实际结果，特别关注安全帽检测和面罩警报
+    
+    Args:
+        test_case: 测试用例信息
+        algorithm_results: 提取的算法结果
+        
+    Returns:
+        比较结果
+    """
+    expected_output = test_case.get("expected_output", {})
+    
+    # 解析测试用例预期输出
+    expected_alert = False
+    expected_objects = []
+    expected_time = None
+    
+    # 尝试从不同格式的预期输出中提取信息
+    if "expected_result" in expected_output and isinstance(expected_output["expected_result"], str):
+        # 从文本描述中提取预期
+        if "is_alert" in expected_output["expected_result"]:
+            if "应为 `true`" in expected_output["expected_result"] or "应为true" in expected_output["expected_result"]:
+                expected_alert = True
+            elif "应为 `false`" in expected_output["expected_result"] or "应为false" in expected_output["expected_result"]:
+                expected_alert = False
+        
+        # 提取预期检测对象
+        objects_match = re.findall(r'检测到(\w+)', expected_output["expected_result"])
+        for obj in objects_match:
+            expected_objects.append({"name": obj})
+    
+    # 也可能有结构化的预期
+    elif "expected_objects" in expected_output:
+        expected_objects = expected_output["expected_objects"]
+    
+    if "expected_processing_time" in expected_output:
+        expected_time = expected_output["expected_processing_time"]
+    
+    # 开始比较
+    comparison = {
+        "is_passed": True,
+        "object_match": True,
+        "alert_match": True,
+        "performance_match": True,
+        "reasons": []
+    }
+    
+    # 比较检测对象
+    if expected_objects:
+        # 检查是否检测到了预期数量的对象
+        if len(expected_objects) != len(algorithm_results["detected_objects"]):
+            comparison["object_match"] = False
+            comparison["reasons"].append(
+                f"检测到 {len(algorithm_results['detected_objects'])} 个对象，但预期是 {len(expected_objects)} 个"
+            )
+        
+        # 检查每个预期对象是否被检测到
+        expected_classes = [obj.get("name") for obj in expected_objects]
+        actual_classes = [obj.get("name") for obj in algorithm_results["detected_objects"]]
+        
+        for expected_class in expected_classes:
+            if expected_class not in actual_classes:
+                comparison["object_match"] = False
+                comparison["reasons"].append(f"未检测到预期的对象类别: {expected_class}")
+        
+        # 检查置信度是否达到预期阈值
+        for expected_obj in expected_objects:
+            name = expected_obj.get("name")
+            min_confidence = expected_obj.get("min_confidence", 0.5)
+            
+            matching_objs = [obj for obj in algorithm_results["detected_objects"] if obj.get("name") == name]
+            if matching_objs:
+                if all(obj["confidence"] < min_confidence for obj in matching_objs):
+                    comparison["object_match"] = False
+                    max_conf = max(obj["confidence"] for obj in matching_objs)
+                    comparison["reasons"].append(
+                        f"对象 {name} 的置信度 ({max_conf:.2f}) 低于预期阈值 ({min_confidence:.2f})"
+                    )
+    
+    # 特别检查警报状态
+    if "expected_result" in expected_output and "is_alert" in expected_output["expected_result"]:
+        if expected_alert != algorithm_results["is_alert"]:
+            comparison["alert_match"] = False
+            if expected_alert:
+                comparison["reasons"].append("预期应发出警报，但算法未发出警报")
+            else:
+                comparison["reasons"].append("预期不应发出警报，但算法发出了警报")
+    
+    # 检查处理时间是否符合预期
+    if expected_time is not None and algorithm_results["processing_time"] is not None:
+        if algorithm_results["processing_time"] > expected_time:
+            comparison["performance_match"] = False
+            comparison["reasons"].append(
+                f"处理时间 ({algorithm_results['processing_time']} ms) 超过预期 ({expected_time} ms)"
+            )
+    
+    # 总体通过判断
+    comparison["is_passed"] = comparison["object_match"] and comparison["alert_match"] and comparison["performance_match"]
+    
+    return comparison
+
+def construct_enhanced_prompt(case, algorithm_results, task_type="安全帽检测"):
+    """
+    构建增强的提示词，包含专业领域知识和具体任务指导
+    
+    Args:
+        case: 测试用例信息
+        algorithm_results: 提取的算法结果
+        task_type: 算法类型
+        
+    Returns:
+        构建的提示词
+    """
+    # 提取测试用例信息
+    case_id = case.case_id
+    expected_output = case.expected_output or {}
+    actual_output = case.actual_output
+    test_data = case.test_data or {}
+    
+    # 从不同格式的预期输出中提取描述
+    expected_description = ""
+    if isinstance(expected_output, dict):
+        if "expected_result" in expected_output:
+            expected_description = expected_output["expected_result"]
+        elif "description" in expected_output:
+            expected_description = expected_output["description"]
+    
+    # 构建提示词
+    prompt = f"""
+请详细分析以下安全帽检测算法的测试用例与实际结果。
+
+测试用例ID: {case_id}
+测试数据: {test_data}
+预期结果描述: {expected_description}
+
+算法实际执行结果摘要:
+- 检测到的对象: {algorithm_results.get('detected_objects', [])}
+- 处理时间: {algorithm_results.get('processing_time')} ms
+- 是否发出警报: {algorithm_results.get('is_alert', False)}
+- 警报原因: {algorithm_results.get('alert_reason', '无警报')}
+
+分析任务:
+1. 判断算法是否符合预期:
+   - 重点检查 `is_alert` 字段是否符合预期
+   - 检查是否正确识别了安全帽/头部，以及置信度是否合理
+   - 检查算法处理时间是否合理
+
+2. 对于安全帽检测算法，需要特别关注:
+   - 有人未佩戴安全帽时是否正确发出警报
+   - 所有人都佩戴安全帽时是否正确不发出警报
+   - 算法对不同颜色安全帽(红、黄、蓝、白、黑等)的识别能力
+   - 不同角度(正面、侧面)的头部检测能力
+
+请对比实际输出中的is_alert字段或其他警报相关信息，判断算法是否满足预期结果中的要求。
+
+请按以下JSON格式输出分析结果:
+{{
+    "is_passed": true/false,  // 测试用例是否通过
+    "analysis": "详细分析说明",  // 对算法输出的详细分析
+    "reasoning": "推理过程",     // 分析的推理过程
+    "confidence": 0-100        // 对分析结果的置信度(百分比)
+}}
+"""
+    
+    return prompt
+
+def parse_llm_response(llm_response: str) -> Dict[str, Any]:
+    """
+    解析大模型回复，支持多种返回格式
+    
+    Args:
+        llm_response: 大模型返回的文本
+        
+    Returns:
+        解析后的结构化结果
+    """
+    try:
+        # 尝试直接解析JSON
+        try:
+            result = json.loads(llm_response)
+            return result
+        except json.JSONDecodeError:
+            # 如果整个响应不是JSON，尝试提取JSON部分
+            json_pattern = r'```json\s*([\s\S]*?)\s*```|```\s*([\s\S]*?)\s*```|\{[\s\S]*\}'
+            match = re.search(json_pattern, llm_response)
+            if match:
+                json_str = match.group(1) or match.group(2) or match.group(0)
+                # 清理可能的多余字符
+                json_str = json_str.strip()
+                if json_str.startswith("```") and json_str.endswith("```"):
+                    json_str = json_str[3:-3].strip()
+                result = json.loads(json_str)
+                return result
+        
+        # 如果无法解析JSON，尝试从文本中提取关键信息
+        is_passed = "通过" in llm_response or "passed" in llm_response.lower()
+        if "不通过" in llm_response or "failed" in llm_response.lower() or "未通过" in llm_response:
+            is_passed = False
+        
+        # 简单提取分析内容
+        analysis = llm_response
+        
+        return {
+            "is_passed": is_passed,
+            "analysis": analysis
+        }
+            
+    except Exception as e:
+        log.error(f"解析大模型回复时出错: {str(e)}")
+        raise ValueError(f"无法解析大模型回复: {str(e)}")
+
+def enhance_llm_results_with_structured_analysis(llm_results: Dict, structured_analysis: Dict) -> Dict:
+    """
+    用结构化分析增强大模型的结果
+    
+    Args:
+        llm_results: 大模型返回的分析结果
+        structured_analysis: 结构化分析结果
+        
+    Returns:
+        增强后的分析结果
+    """
+    # 用结构化分析中的确定性信息增强大模型分析
+    enhanced_results = llm_results.copy()
+    
+    # 如果大模型没有正确识别通过状态，使用结构化分析的结果
+    if "is_passed" in structured_analysis and (
+            "is_passed" not in enhanced_results or 
+            structured_analysis["is_passed"] != enhanced_results.get("is_passed")):
+        # 添加说明，表明这是基于结构化分析的判断
+        original_passed = enhanced_results.get("is_passed")
+        enhanced_results["is_passed"] = structured_analysis["is_passed"]
+        
+        # 添加结构化分析的理由
+        if "analysis" in enhanced_results:
+            enhanced_results["analysis"] = f"{enhanced_results['analysis']}\n\n补充分析(基于结构化比较): "
+            if structured_analysis.get("reasons"):
+                enhanced_results["analysis"] += f"{', '.join(structured_analysis['reasons'])}"
+            enhanced_results["analysis"] += f"\n【原大模型通过判定: {original_passed}，结构化分析判定: {structured_analysis['is_passed']}】"
+        else:
+            enhanced_results["analysis"] = "结构化分析结果: "
+            if structured_analysis.get("reasons"):
+                enhanced_results["analysis"] += f"{', '.join(structured_analysis['reasons'])}"
+    
+    # 添加结构化提取的对象信息
+    if "detected_objects" not in enhanced_results and structured_analysis.get("detected_objects"):
+        enhanced_results["detected_objects"] = structured_analysis["detected_objects"]
+    
+    # 添加处理时间信息
+    if "processing_time" not in enhanced_results and structured_analysis.get("processing_time"):
+        enhanced_results["processing_time"] = structured_analysis["processing_time"]
+    
+    return enhanced_results
 
 if __name__ == "__main__":
     import asyncio

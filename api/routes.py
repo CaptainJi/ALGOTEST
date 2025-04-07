@@ -11,6 +11,10 @@ import json
 import shutil
 import tempfile
 import time
+import logging
+import hashlib
+import asyncio
+import traceback
 from typing import Dict, Any, List, Optional, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Path, Query, Body, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -75,7 +79,6 @@ from api.models import (
 )
 
 # 添加MCP相关导入
-import asyncio
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 from core.mcp_config import get_mcp_config
@@ -3082,3 +3085,160 @@ async def delete_task(
         db.rollback()
         log.error(f"删除任务 {task_id} 时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除任务时出错: {str(e)}")
+
+@router.get("/tasks/{task_id}/report", response_model=Dict[str, Any])
+async def get_task_report(
+    task_id: str = Path(..., description="任务ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取任务的测试报告数据
+    
+    该接口返回指定任务的测试报告数据，包括任务基本信息和测试用例执行结果。
+    
+    - **task_id**: 任务ID
+    
+    返回报告数据，包括任务信息和测试用例结果
+    """
+    log.info(f"获取任务报告数据: {task_id}")
+    
+    try:
+        # 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        
+        # 获取任务基本信息
+        task_info = {
+            "task_id": task.task_id,
+            "status": task.status,
+            "algorithm_image": task.algorithm_image,
+            "dataset_url": task.dataset_url,
+            "container_name": task.container_name,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at
+        }
+        
+        # 添加可选字段（如果存在）
+        if hasattr(task, 'start_time'):
+            task_info["start_time"] = task.start_time
+        if hasattr(task, 'end_time'):
+            task_info["end_time"] = task.end_time
+        if hasattr(task, 'document_id'):
+            task_info["document_id"] = task.document_id
+        
+        # 计算任务执行总时长（秒）
+        duration = None
+        if hasattr(task, 'start_time') and hasattr(task, 'end_time') and task.start_time and task.end_time:
+            start = datetime.fromisoformat(task.start_time.replace('Z', '+00:00'))
+            end = datetime.fromisoformat(task.end_time.replace('Z', '+00:00'))
+            duration = (end - start).total_seconds()
+        
+        # 查询任务下的所有测试用例及其结果
+        with db as session:
+            query = session.query(DBTestCase).filter(DBTestCase.task_id == task_id)
+            cases = query.all()
+            
+            # 转换测试用例列表为字典列表
+            test_cases = []
+            for case in cases:
+                # 解析result字段（如果是JSON字符串）
+                result_data = {}
+                
+                # 直接跳过不存在的result字段检查
+                
+                # 确定用例是否通过
+                is_passed = False
+                if hasattr(case, 'is_passed') and case.is_passed:
+                    is_passed = case.is_passed
+                elif hasattr(case, 'status') and case.status == "completed":
+                    is_passed = True
+                elif hasattr(case, 'status') and case.status == "failed":
+                    is_passed = False
+                
+                # 获取执行时间
+                execution_time = None
+                if hasattr(case, 'execution_time') and case.execution_time:
+                    execution_time = case.execution_time
+                
+                # 提取执行日志
+                execution_log = ""
+                if hasattr(case, 'actual_output') and case.actual_output:
+                    execution_log = case.actual_output
+                
+                # 构建基本测试用例信息
+                case_info = {
+                    "case_id": case.case_id,
+                    "status": case.status if hasattr(case, 'status') else "unknown",
+                    "is_passed": is_passed,
+                    "result_data": result_data,
+                    "result_analysis": case.result_analysis if hasattr(case, 'result_analysis') else None,
+                    "execution_log": execution_log,
+                    "duration": execution_time  # 以毫秒为单位的执行时间
+                }
+                
+                # 添加可选字段（如果存在）
+                if hasattr(case, 'name'):
+                    case_info["name"] = case.name
+                else:
+                    # 尝试从input_data中提取名称
+                    case_info["name"] = case.input_data.get("name", f"测试用例 {case.case_id}") if hasattr(case, 'input_data') and case.input_data else f"测试用例 {case.case_id}"
+                
+                if hasattr(case, 'purpose'):
+                    case_info["purpose"] = case.purpose
+                elif hasattr(case, 'input_data') and case.input_data and "purpose" in case.input_data:
+                    case_info["purpose"] = case.input_data["purpose"]
+                else:
+                    case_info["purpose"] = "未指定目的"
+                
+                if hasattr(case, 'test_data'):
+                    case_info["test_data"] = case.test_data
+                
+                test_cases.append(case_info)
+        
+        # 统计测试结果
+        total_cases = len(test_cases)
+        passed_cases = sum(1 for case in test_cases if case["is_passed"])
+        failed_cases = total_cases - passed_cases
+        pass_rate = (passed_cases / total_cases * 100) if total_cases > 0 else 0
+        
+        # 生成简单的分析报告
+        analysis = {
+            "conclusion": f"总计{total_cases}个测试用例，通过{passed_cases}个，失败{failed_cases}个，通过率{pass_rate:.2f}%。",
+            "failed_cases": [
+                {
+                    "case_id": case["case_id"],
+                    "name": case.get("name", f"测试用例 {case['case_id']}"),
+                    "reason": case.get("result_analysis", "未提供失败原因")
+                }
+                for case in test_cases if not case["is_passed"]
+            ],
+            "recommendations": []
+        }
+        
+        # 根据失败情况提供简单建议
+        if failed_cases > 0:
+            analysis["recommendations"] = ["检查算法实现是否符合接口规范", "查看失败用例的输入数据格式是否正确"]
+        
+        # 返回完整报告数据
+        report_data = {
+            **task_info,
+            "duration": duration,
+            "test_cases": test_cases,
+            "statistics": {
+                "total_cases": total_cases,
+                "passed_cases": passed_cases,
+                "failed_cases": failed_cases,
+                "pass_rate": pass_rate
+            },
+            "analysis": analysis
+        }
+        
+        log.info(f"成功获取任务报告数据: {task_id}, 包含{total_cases}个测试用例")
+        return report_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"获取任务报告数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取任务报告数据失败: {str(e)}")
