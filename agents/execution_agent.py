@@ -923,15 +923,24 @@ async def save_result(state: ExecutionState) -> ExecutionState:
             }
             serializable_results.append(serializable_result)
         
-        # 判断执行是否成功
+        # 判断执行是否成功（使用分析后的结果）
         success = execution_result.get("success", False)
+        original_success = execution_result.get("original_success", success)
         error_description = execution_result.get("error", "")
+        error_detected = execution_result.get("error_detected", False)
+        error_messages = execution_result.get("error_messages", [])
+        ai_analysis = execution_result.get("ai_analysis", {})
+        analysis_report = execution_result.get("analysis_report", "")
         
         # 构建结果数据
         result_data = {
             "success": success,
+            "original_success": original_success,
+            "error_detected": error_detected,
             "execution_time": execution_time,
             "error": error_description if not success else None,
+            "error_messages": error_messages,
+            "ai_analysis": ai_analysis,
             "results": serializable_results
         }
         
@@ -946,11 +955,27 @@ async def save_result(state: ExecutionState) -> ExecutionState:
                 if result.get("raw_stderr"):
                     raw_output.append("STDERR:\n" + result["raw_stderr"])
         
-        # 添加基本结果分析
+        # 构建详细的结果分析
         result_analysis = []
-        result_analysis.append(f"执行{'成功' if success else '失败'}")
-        if error_description:
-            result_analysis.append(f"错误原因: {error_description}")
+        
+        # 使用智能分析报告（如果有）
+        if analysis_report:
+            result_analysis.append("=== 智能分析报告 ===")
+            result_analysis.append(analysis_report)
+        else:
+            # 回退到基本分析
+            result_analysis.append(f"执行{'成功' if success else '失败'}")
+            if original_success != success:
+                result_analysis.append(f"注意: 原始判断为{'成功' if original_success else '失败'}，但智能分析发现问题")
+            
+            if error_detected and error_messages:
+                result_analysis.append("检测到的错误:")
+                for msg in error_messages:
+                    result_analysis.append(f"  - {msg}")
+            
+            if error_description:
+                result_analysis.append(f"错误原因: {error_description}")
+        
         if execution_time > 0:
             result_analysis.append(f"执行耗时: {execution_time}毫秒")
         
@@ -1457,7 +1482,13 @@ async def execute_container_command(task_id: str, command: str, external_output:
         error_msg = ""
         
         # 检查stdout中是否包含常见错误字符串
-        error_keywords = ["脚本执行失败", "返回码:", "错误:", "Error:", "Failed:"]
+        error_keywords = [
+            "脚本执行失败", "返回码:", "错误:", "Error:", "Failed:", 
+            "[ERROR]", "ERROR:", "Exception:", "异常:", "失败:",
+            "Traceback", "RuntimeError", "ValueError", "TypeError",
+            "FileNotFoundError", "ImportError", "ModuleNotFoundError",
+            "FAILED", "FAIL:", "failure", "fatal", "FATAL"
+        ]
         for keyword in error_keywords:
             if keyword in raw_stdout:
                 is_error = True
@@ -1575,13 +1606,15 @@ def create_execution_graph() -> StateGraph:
     execution_graph.add_node("load_test_cases", load_test_cases)
     execution_graph.add_node("parse_command", parse_command)
     execution_graph.add_node("execute_command", execute_command)
+    execution_graph.add_node("analyze_result", analyze_result)
     execution_graph.add_node("save_result", save_result)
     
     # 添加边
     execution_graph.add_edge("setup_docker", "load_test_cases")
     execution_graph.add_edge("load_test_cases", "parse_command")
     execution_graph.add_edge("parse_command", "execute_command")
-    execution_graph.add_edge("execute_command", "save_result")
+    execution_graph.add_edge("execute_command", "analyze_result")
+    execution_graph.add_edge("analyze_result", "save_result")
     
     # 添加条件边 - 如果需要执行下一个测试用例，回到parse_command
     execution_graph.add_conditional_edges(
@@ -1880,3 +1913,197 @@ def try_clear_container_record(task_id: str) -> None:
     except Exception as e:
         log.error(f"强制清除容器记录失败，忽略此错误: {str(e)}")
         # 不抛出异常，让调用方继续执行
+
+
+async def analyze_result(state: ExecutionState) -> ExecutionState:
+    """
+    智能分析执行结果，判断测试是否真正成功
+    
+    Args:
+        state: 当前状态
+        
+    Returns:
+        更新后的状态，包含分析结果
+    """
+    case_id = state.get("case_id")
+    log.info(f"开始智能分析执行结果: 用例ID={case_id}")
+    
+    try:
+        # 获取执行结果
+        execution_result = state.get("execution_result")
+        if not execution_result:
+            raise ValueError("没有执行结果")
+        
+        # 获取当前测试用例
+        test_cases = state.get("test_cases", [])
+        current_index = state.get("current_case_index", 0)
+        
+        if not test_cases or current_index >= len(test_cases):
+            raise ValueError("无法获取当前测试用例信息")
+        
+        current_case = test_cases[current_index]
+        
+        # 获取原始执行输出
+        all_results = execution_result.get("all_results", [])
+        raw_output = ""
+        raw_stderr = ""
+        
+        for result in all_results:
+            if result.get("full_output"):
+                raw_output += result["full_output"] + "\n"
+            if result.get("raw_stdout"):
+                raw_output += result["raw_stdout"] + "\n"
+            if result.get("raw_stderr"):
+                raw_stderr += result["raw_stderr"] + "\n"
+        
+        log.info(f"分析执行输出，总长度: {len(raw_output)} 字符")
+        
+        # 1. 检查是否有明显的错误信息
+        error_found = False
+        error_messages = []
+        
+        # 扩展的错误检测关键词
+        error_keywords = [
+            "[ERROR]", "ERROR:", "error:", "Error:", "Failed:", "failed:", "FAILED", "FAIL:",
+            "Exception:", "exception:", "异常:", "错误:", "失败:", "脚本执行失败", "返回码:",
+            "Traceback", "RuntimeError", "ValueError", "TypeError", "ImportError",
+            "FileNotFoundError", "ModuleNotFoundError", "fatal", "FATAL",
+            "source: not found", "command not found", "No such file", "Permission denied",
+            "Segmentation fault", "core dumped", "Aborted", "Killed"
+        ]
+        
+        for keyword in error_keywords:
+            if keyword in raw_output or keyword in raw_stderr:
+                error_found = True
+                error_messages.append(f"检测到错误关键词: {keyword}")
+                log.warning(f"在执行输出中发现错误关键词: {keyword}")
+        
+        # 2. 检查命令退出码
+        if "exit code" in raw_output.lower() and "exit code 0" not in raw_output.lower():
+            error_found = True
+            error_messages.append("检测到非零退出码")
+            log.warning("检测到非零退出码")
+        
+        # 3. 使用AI分析执行结果（如果有预期输出）
+        ai_analysis_result = None
+        expected_output = current_case.get("expected_output")
+        
+        if expected_output:
+            try:
+                # 解析预期输出
+                if isinstance(expected_output, str):
+                    expected_data = json.loads(expected_output)
+                else:
+                    expected_data = expected_output
+                
+                # 创建AI客户端进行智能分析
+                ai_client = ZhipuAIClient()
+                
+                # 构建分析提示
+                analysis_prompt = f"""
+请分析以下测试执行结果，判断是否符合预期：
+
+测试用例信息：
+{json.dumps(current_case.get("input_data", {}), ensure_ascii=False, indent=2)}
+
+预期输出：
+{json.dumps(expected_data, ensure_ascii=False, indent=2)}
+
+实际执行输出：
+{raw_output[:2000]}...
+
+请从以下几个方面分析：
+1. 执行是否成功完成（没有错误、异常或失败）
+2. 输出结果是否符合预期
+3. 是否有性能问题或警告
+4. 整体测试是否通过
+
+请返回JSON格式的分析结果：
+{{
+  "success": true/false,
+  "confidence": 0.0-1.0,
+  "analysis": "详细分析说明",
+  "issues": ["发现的问题列表"],
+  "recommendations": ["改进建议"]
+}}
+"""
+                
+                # 调用AI进行分析（这里简化处理，实际可以调用智谱AI）
+                log.info("使用AI分析执行结果...")
+                # 暂时使用规则分析，后续可以集成AI
+                ai_analysis_result = {
+                    "success": not error_found,
+                    "confidence": 0.8 if not error_found else 0.2,
+                    "analysis": f"基于规则分析，{'未发现' if not error_found else '发现'}明显错误",
+                    "issues": error_messages,
+                    "recommendations": ["检查执行日志中的错误信息"] if error_found else []
+                }
+                
+            except Exception as e:
+                log.warning(f"AI分析失败，使用规则分析: {e}")
+                ai_analysis_result = {
+                    "success": not error_found,
+                    "confidence": 0.6,
+                    "analysis": "AI分析失败，仅基于规则判断",
+                    "issues": error_messages,
+                    "recommendations": []
+                }
+        
+        # 4. 综合判断最终结果
+        original_success = execution_result.get("success", False)
+        
+        # 如果原始判断为成功，但发现了错误，则覆盖为失败
+        final_success = original_success and not error_found
+        
+        # 如果有AI分析结果，也考虑进去
+        if ai_analysis_result:
+            ai_success = ai_analysis_result.get("success", False)
+            # 如果AI和规则分析都认为失败，则最终为失败
+            final_success = final_success and ai_success
+        
+        # 构建详细的分析报告
+        analysis_report = []
+        analysis_report.append(f"原始执行状态: {'成功' if original_success else '失败'}")
+        analysis_report.append(f"错误检测结果: {'发现错误' if error_found else '未发现错误'}")
+        
+        if error_messages:
+            analysis_report.append("发现的问题:")
+            for msg in error_messages:
+                analysis_report.append(f"  - {msg}")
+        
+        if ai_analysis_result:
+            analysis_report.append(f"AI分析置信度: {ai_analysis_result['confidence']:.2f}")
+            analysis_report.append(f"AI分析结果: {ai_analysis_result['analysis']}")
+        
+        analysis_report.append(f"最终判断: {'测试通过' if final_success else '测试失败'}")
+        
+        # 更新执行结果
+        updated_execution_result = {
+            **execution_result,
+            "success": final_success,
+            "original_success": original_success,
+            "error_detected": error_found,
+            "error_messages": error_messages,
+            "ai_analysis": ai_analysis_result,
+            "analysis_report": "\n".join(analysis_report)
+        }
+        
+        log.info(f"智能分析完成: 原始={original_success}, 最终={final_success}")
+        if error_found:
+            log.warning(f"发现 {len(error_messages)} 个错误指标")
+        
+        # 更新状态
+        return {
+            **state,
+            "execution_result": updated_execution_result,
+            "status": "analyzed"
+        }
+        
+    except Exception as e:
+        error_msg = f"智能分析执行结果失败: {str(e)}"
+        log.error(error_msg)
+        return {
+            **state,
+            "errors": state.get("errors", []) + [error_msg],
+            "status": "error"
+        }

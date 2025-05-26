@@ -287,7 +287,13 @@ def update_test_case_status(case_id: str, status: str, result: Any = None) -> Op
                     success = result.get("success", True)
                 elif isinstance(result, str):
                     # 如果是字符串类型，检查是否包含错误关键词
-                    error_keywords = ["错误", "Error", "Failed", "失败", "Exception", "异常"]
+                    error_keywords = [
+                        "错误", "Error", "Failed", "失败", "Exception", "异常",
+                        "[ERROR]", "ERROR:", "脚本执行失败", "返回码:",
+                        "Traceback", "RuntimeError", "ValueError", "TypeError",
+                        "FileNotFoundError", "ImportError", "ModuleNotFoundError",
+                        "FAILED", "FAIL:", "failure", "fatal", "FATAL"
+                    ]
                     success = not any(keyword in result for keyword in error_keywords)
             
             case.is_passed = success

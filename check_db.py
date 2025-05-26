@@ -122,9 +122,9 @@ def main():
         
         # 获取最近创建的测试用例
         cursor.execute('''
-            SELECT case_id, task_id, create_time, update_time, is_passed 
+            SELECT case_id, task_id, created_at, created_at, is_passed 
             FROM test_cases 
-            ORDER BY create_time DESC 
+            ORDER BY created_at DESC 
             LIMIT 5
         ''')
         recent_cases = cursor.fetchall()
@@ -134,12 +134,12 @@ def main():
             status = "通过" if is_passed == 1 else "失败" if is_passed == 0 else "未知"
             print(f"ID: {case_id}, 任务ID: {task_id}, 创建时间: {format_datetime(create_time)}, 更新时间: {format_datetime(update_time)}, 状态: {status}")
         
-        # 获取最近执行的测试用例
+                # 获取最近执行的测试用例
         cursor.execute('''
-            SELECT case_id, task_id, create_time, update_time, is_passed 
+            SELECT case_id, task_id, created_at, created_at, is_passed 
             FROM test_cases 
-            WHERE actual_output IS NOT NULL
-            ORDER BY update_time DESC 
+            WHERE actual_output IS NOT NULL 
+            ORDER BY created_at DESC 
             LIMIT 5
         ''')
         recent_executed_cases = cursor.fetchall()
@@ -157,7 +157,7 @@ def main():
         if completed_case_ids:
             test_case_id = completed_case_ids[0]  # 使用第一个已完成的测试用例
             cursor.execute('''
-                SELECT case_id, task_id, test_data, expected_output, actual_output, is_passed, create_time, update_time
+                SELECT case_id, task_id, test_data, expected_output, actual_output, is_passed, created_at, created_at
                 FROM test_cases 
                 WHERE case_id = ?
             ''', (test_case_id,))

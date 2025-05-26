@@ -297,7 +297,13 @@ async def test_load_cases_and_parse_execute_save():
                                 logger.info(f"标准输出:\n{stdout}")
                                 
                                 # 检查是否在stdout中包含错误信息
-                                error_indicators = ["脚本执行失败", "返回码:", "错误:", "Error:", "Failed:"]
+                                error_indicators = [
+                                    "脚本执行失败", "返回码:", "错误:", "Error:", "Failed:",
+                                    "[ERROR]", "ERROR:", "Exception:", "异常:", "失败:",
+                                    "Traceback", "RuntimeError", "ValueError", "TypeError",
+                                    "FileNotFoundError", "ImportError", "ModuleNotFoundError",
+                                    "FAILED", "FAIL:", "failure", "fatal", "FATAL"
+                                ]
                                 for indicator in error_indicators:
                                     if indicator in stdout:
                                         error_found = True
