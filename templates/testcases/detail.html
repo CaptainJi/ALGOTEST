@@ -595,14 +595,19 @@
                     </div>
                 </div>
             `;
-        } else if (data.status === 'passed' || data.status === 'failed') {
+        } else if (data.status === 'passed' || data.status === 'failed' || data.status === 'completed') {
+            // 对于completed状态，根据is_passed字段判断通过或失败
+            let finalStatus = data.status;
+            if (data.status === 'completed') {
+                finalStatus = data.is_passed ? 'passed' : 'failed';
+            }
             resultContainer.innerHTML = `
                 <div class="text-center mb-3">
-                    <div class="display-1 ${data.status === 'passed' ? 'text-success' : 'text-danger'}">
-                        <i class="bi ${data.status === 'passed' ? 'bi-check-circle' : 'bi-x-circle'}"></i>
+                    <div class="display-1 ${finalStatus === 'passed' ? 'text-success' : 'text-danger'}">
+                        <i class="bi ${finalStatus === 'passed' ? 'bi-check-circle' : 'bi-x-circle'}"></i>
                     </div>
-                    <h5 class="${data.status === 'passed' ? 'text-success' : 'text-danger'}">
-                        ${data.status === 'passed' ? '测试通过' : '测试失败'}
+                    <h5 class="${finalStatus === 'passed' ? 'text-success' : 'text-danger'}">
+                        ${finalStatus === 'passed' ? '测试通过' : '测试失败'}
                     </h5>
                 </div>
                 ${data.actual_output ? `
@@ -616,11 +621,27 @@
                 ${data.result_analysis ? `
                 <div class="mt-3">
                     <h6 class="mb-2">结果分析:</h6>
-                    <div class="border-start border-4 ${data.status === 'passed' ? 'border-success' : 'border-danger'} ps-3">
+                    <div class="border-start border-4 ${finalStatus === 'passed' ? 'border-success' : 'border-danger'} ps-3">
                         ${formatMultilineText(data.result_analysis)}
                     </div>
                 </div>
                 ` : ''}
+            `;
+        } else {
+            // 处理其他未知状态
+            resultContainer.innerHTML = `
+                <div class="alert alert-secondary">
+                    <i class="bi bi-question-circle me-2"></i>
+                    测试状态: ${data.status || '未知'}
+                    ${data.actual_output ? `
+                    <div class="mt-3">
+                        <h6 class="mb-2">执行输出:</h6>
+                        <div class="border p-2 bg-light">
+                            <pre class="mb-0"><code>${data.actual_output}</code></pre>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
             `;
         }
     }
