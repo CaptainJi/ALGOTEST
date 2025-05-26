@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 import json
 import subprocess
+import pytest
 
 from agents.analysis_agent import (
     read_pdf_content,
@@ -342,6 +343,34 @@ class TestAnalysisAgent(unittest.TestCase):
             print("=== 测试用例生成结束 ===\n")
             # 不抛出异常，而是跳过测试
             self.skipTest(f"测试过程中发生错误: {str(e)}")
+
+def fake_call_zhipu_api(prompt, llm_config):
+    # 返回模拟的测试用例文本
+    return """
+## 测试用例1: 参数边界测试
+- 测试目的: 验证参数边界值时算法行为
+- 测试步骤: 设置参数 visual_object=false，然后运行算法检测图像
+- 预期结果: 算法输出无目标框
+- 验证方法: 检查输出json中无目标框字段
+"""
+
+@patch('agents.analysis_agent.call_zhipu_api', side_effect=fake_call_zhipu_api)
+def test_generate_test_cases_basic(mock_call):
+    state = {
+        'task_id': 'test_task_001',
+        'pdf_content': '算法需求文档内容',
+        'test_cases': None,
+        'errors': [],
+        'status': 'init',
+    }
+    result = generate_test_cases(state)
+    assert 'test_cases' in result
+    assert isinstance(result['test_cases'], list)
+    assert len(result['test_cases']) >= 1
+    case = result['test_cases'][0]
+    assert 'name' in case and 'purpose' in case and 'steps' in case
+    assert case['name'] != ''
+    assert result['status'] != 'error'
 
 if __name__ == "__main__":
     unittest.main()

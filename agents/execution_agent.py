@@ -1050,8 +1050,12 @@ fi
 # 运行新容器
 echo "正在启动新容器: {container_name}"
 docker run --gpus=all -itd --privileged -v /etc/localtime:/etc/localtime:ro -e LANG=C.UTF-8 --name {container_name} {dataset_mount} {algorithm_image}
-if [ $? -ne 0 ]; then
-    echo "启动容器失败: {container_name}"
+docker_run_exit_code=$?
+if [ $docker_run_exit_code -ne 0 ]; then
+    echo "启动容器失败: {container_name}, 退出码: $docker_run_exit_code"
+    # 获取详细错误信息
+    echo "Docker错误详情:"
+    docker logs {container_name} 2>&1 || echo "无法获取容器日志"
     exit 1
 fi
 
@@ -1061,7 +1065,10 @@ container_status=$(docker inspect -f '{{{{.State.Running}}}}' {container_name} 2
 
 if [ "$container_status" != "true" ]; then
     echo "容器启动失败，输出日志:"
-    docker logs {container_name}
+    docker logs {container_name} 2>&1 || echo "无法获取容器日志"
+    # 获取容器状态详情
+    echo "容器状态详情:"
+    docker inspect {container_name} 2>&1 || echo "无法获取容器状态"
     exit 1
 fi
 
@@ -1118,6 +1125,37 @@ echo "算法镜像: {algorithm_image}"
                                     "error": f"Docker容器启动失败: {error_msg}"
                                 }
                             
+                            # 检查stdout中是否包含错误信息
+                            stdout_content = ""
+                            if hasattr(result, 'stdout'):
+                                stdout_content = result.stdout
+                            elif hasattr(result, 'text'):
+                                stdout_content = result.text
+                            else:
+                                stdout_content = str(result)
+                            
+                            # 检查stdout中的错误关键词
+                            error_keywords = [
+                                "启动容器失败",
+                                "拉取镜像失败", 
+                                "could not select device driver",
+                                "Error response from daemon",
+                                "docker: Error",
+                                "退出码: 1",
+                                "exit code 1"
+                            ]
+                            
+                            for keyword in error_keywords:
+                                if keyword in stdout_content:
+                                    error_msg = f"Docker容器启动失败: {stdout_content}"
+                                    log.error(f"在stdout中检测到错误: {keyword}")
+                                    log.error(f"完整输出: {stdout_content}")
+                                    return {
+                                        "success": False,
+                                        "task_id": task_id,
+                                        "error": error_msg
+                                    }
+                            
                             # 再次检查容器是否真的在运行
                             verify_script = f"""
 container_status=$(docker inspect -f '{{{{.State.Running}}}}' {container_name} 2>/dev/null || echo "false")
@@ -1144,14 +1182,40 @@ echo "容器状态检查成功: 正在运行"
                                     }
                                 
                                 # 检查验证脚本输出
-                                if hasattr(verify_result, 'stdout') and "容器状态检查成功" not in verify_result.stdout:
-                                    error_msg = verify_result.stdout
-                                    log.error(f"容器状态验证未通过: {error_msg}")
+                                verify_stdout = ""
+                                if hasattr(verify_result, 'stdout'):
+                                    verify_stdout = verify_result.stdout
+                                elif hasattr(verify_result, 'text'):
+                                    verify_stdout = verify_result.text
+                                else:
+                                    verify_stdout = str(verify_result)
+                                
+                                if "容器状态检查成功" not in verify_stdout:
+                                    error_msg = f"容器状态验证未通过: {verify_stdout}"
+                                    log.error(error_msg)
                                     return {
                                         "success": False,
                                         "task_id": task_id,
-                                        "error": f"容器状态验证未通过: {error_msg}"
+                                        "error": error_msg
                                     }
+                                
+                                # 额外检查验证输出中是否包含错误信息
+                                verify_error_keywords = [
+                                    "容器状态检查失败",
+                                    "未运行",
+                                    "容器不存在",
+                                    "exit 1"
+                                ]
+                                
+                                for keyword in verify_error_keywords:
+                                    if keyword in verify_stdout:
+                                        error_msg = f"容器状态验证失败: {verify_stdout}"
+                                        log.error(f"在验证输出中检测到错误: {keyword}")
+                                        return {
+                                            "success": False,
+                                            "task_id": task_id,
+                                            "error": error_msg
+                                        }
                                 
                                 log.info(f"Docker容器验证成功: {container_name}")
                                 
