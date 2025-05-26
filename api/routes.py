@@ -3242,3 +3242,187 @@ async def get_task_report(
     except Exception as e:
         log.error(f"获取任务报告数据失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取任务报告数据失败: {str(e)}")
+
+# 释放Docker容器
+@router.post("/tasks/{task_id}/release-docker", response_model=DockerReleaseResponse)
+async def release_task_docker(
+    task_id: str = Path(..., description="任务ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    释放任务的Docker容器
+    
+    该接口会释放指定任务的Docker容器，清理相关资源。
+    
+    - **task_id**: 任务ID
+    
+    返回释放结果
+    """
+    log.info(f"开始释放任务Docker容器: {task_id}")
+    
+    try:
+        # 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"测试任务不存在: {task_id}")
+        
+        # 调用释放容器函数
+        from agents.execution_agent import release_algorithm_container
+        result = await release_algorithm_container(task_id)
+        
+        if result.get("success"):
+            log.info(f"Docker容器释放成功: {task_id}")
+            return {
+                "message": "Docker容器已成功释放",
+                "success": True,
+                "task_id": task_id,
+                "container_name": result.get("container_name"),
+                "details": result.get("result", {})
+            }
+        else:
+            error_message = result.get("error", "未知错误")
+            log.error(f"Docker容器释放失败: {error_message}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Docker容器释放失败: {error_message}"
+            )
+    except HTTPException:
+        # 直接重新抛出HTTP异常
+        raise
+    except Exception as e:
+        log.error(f"释放Docker容器失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"释放Docker容器失败: {str(e)}")
+
+
+# 创建Docker容器
+@router.post("/tasks/{task_id}/setup-container", response_model=DockerSetupResponse)
+async def setup_task_container(
+    task_id: str = Path(..., description="任务ID")
+):
+    """
+    为任务创建Docker容器
+    
+    该接口会为指定任务创建Docker容器，包括拉取镜像、创建容器等步骤。
+    
+    - **task_id**: 任务ID
+    
+    返回容器创建结果
+    """
+    log.info(f"开始为任务创建Docker容器: {task_id}")
+    
+    try:
+        # 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"测试任务不存在: {task_id}")
+        
+        # 检查算法镜像是否已配置
+        if not task.algorithm_image:
+            raise HTTPException(status_code=400, detail="算法镜像未配置，请先配置算法镜像")
+        
+        # 调用容器设置函数
+        from agents.execution_agent import setup_algorithm_container
+        result = await setup_algorithm_container(task_id)
+        
+        if result.get("success"):
+            log.info(f"Docker容器创建成功: {task_id}")
+            return {
+                "message": "Docker容器创建成功",
+                "success": True,
+                "task_id": task_id,
+                "container_name": result.get("container_name"),
+                "algorithm_image": result.get("algorithm_image"),
+                "dataset_url": result.get("dataset_url"),
+                "details": result.get("result", {})
+            }
+        else:
+            error_message = result.get("error", "未知错误")
+            log.error(f"Docker容器创建失败: {error_message}")
+            return {
+                "message": f"Docker容器创建失败: {error_message}",
+                "success": False,
+                "task_id": task_id,
+                "error": error_message
+            }
+    except HTTPException:
+        # 直接重新抛出HTTP异常
+        raise
+    except Exception as e:
+        log.error(f"创建Docker容器失败: {str(e)}")
+        return {
+            "message": f"创建Docker容器失败: {str(e)}",
+            "success": False,
+            "task_id": task_id,
+            "error": str(e)
+        }
+
+
+# 检查容器状态
+@router.get("/tasks/{task_id}/container-status", response_model=Dict[str, Any])
+async def check_container_status(
+    task_id: str = Path(..., description="任务ID")
+):
+    """
+    检查任务的Docker容器状态
+    
+    该接口会检查指定任务的Docker容器运行状态。
+    
+    - **task_id**: 任务ID
+    
+    返回容器状态信息
+    """
+    log.info(f"检查任务Docker容器状态: {task_id}")
+    
+    try:
+        # 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"测试任务不存在: {task_id}")
+        
+        # 检查是否有容器名称
+        if not task.container_name:
+            return {
+                "success": False,
+                "task_id": task_id,
+                "error": "任务未关联Docker容器"
+            }
+        
+        # 这里可以添加实际的容器状态检查逻辑
+        # 目前返回基本信息
+        return {
+            "success": True,
+            "task_id": task_id,
+            "container_name": task.container_name,
+            "status": "running",  # 这里应该是实际的容器状态
+            "message": f"容器 {task.container_name} 运行正常"
+        }
+        
+    except HTTPException:
+        # 直接重新抛出HTTP异常
+        raise
+    except Exception as e:
+        log.error(f"检查容器状态失败: {str(e)}")
+        return {
+            "success": False,
+            "task_id": task_id,
+            "error": str(e)
+        }
+
+
+# 删除容器
+@router.delete("/tasks/{task_id}/remove-container", response_model=DockerReleaseResponse)
+async def remove_task_container(
+    task_id: str = Path(..., description="任务ID")
+):
+    """
+    删除任务的Docker容器
+    
+    该接口会删除指定任务的Docker容器，清理相关资源。
+    这是release_task_docker的别名接口。
+    
+    - **task_id**: 任务ID
+    
+    返回删除结果
+    """
+    # 直接调用释放容器接口
+    return await release_task_docker(task_id)

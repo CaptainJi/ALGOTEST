@@ -132,11 +132,11 @@
                             <thead>
                                 <tr>
                                     <th style="width: 5%">序号</th>
-                                    <th style="width: 10%">用例ID</th>
+                                    <th style="width: 15%">用例ID</th>
                                     <th style="width: 25%">名称</th>
                                     <th style="width: 20%">测试数据</th>
                                     <th style="width: 10%">结果</th>
-                                    <th style="width: 20%">执行时间</th>
+                                    <th style="width: 15%">执行时间</th>
                                     <th style="width: 10%">操作</th>
                                 </tr>
                             </thead>
@@ -160,7 +160,7 @@
 
 <!-- 用例详情模态框 -->
 <div class="modal fade" id="caseDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">测试用例详情</h5>
@@ -205,8 +205,23 @@
                 </div>
                 
                 <div>
-                    <strong>执行日志：</strong>
-                    <pre id="detailCaseLog" class="p-3 bg-dark text-light rounded" style="max-height: 300px; overflow-y: auto;"></pre>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>执行日志：</strong>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-secondary" onclick="copyLogToClipboard()">
+                                <i class="bi bi-clipboard"></i> 复制
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="downloadLog()">
+                                <i class="bi bi-download"></i> 下载
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="toggleLogWrap()">
+                                <i class="bi bi-text-wrap"></i> 换行
+                            </button>
+                        </div>
+                    </div>
+                    <div class="log-container">
+                        <pre id="detailCaseLog" class="log-content"></pre>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -217,6 +232,146 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    .log-container {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        background-color: #1e1e1e;
+        position: relative;
+        max-height: 500px;
+        overflow: hidden;
+    }
+    
+    .log-content {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.4;
+        margin: 0;
+        padding: 15px;
+        white-space: pre;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 500px;
+        border: none;
+        border-radius: 0;
+    }
+    
+    .log-content.wrap {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    /* 日志语法高亮 */
+    .log-content .log-timestamp {
+        color: #569cd6;
+    }
+    
+    .log-content .log-level-info {
+        color: #4ec9b0;
+    }
+    
+    .log-content .log-level-warn {
+        color: #dcdcaa;
+    }
+    
+    .log-content .log-level-error {
+        color: #f44747;
+    }
+    
+    .log-content .log-level-debug {
+        color: #9cdcfe;
+    }
+    
+    .log-content .log-command {
+        color: #ce9178;
+    }
+    
+    .log-content .log-output {
+        color: #d4d4d4;
+    }
+    
+    .log-content .log-success {
+        color: #4ec9b0;
+    }
+    
+    .log-content .log-failure {
+        color: #f44747;
+    }
+    
+    /* 滚动条样式 */
+    .log-content::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .log-content::-webkit-scrollbar-track {
+        background: #2d2d30;
+    }
+    
+    .log-content::-webkit-scrollbar-thumb {
+        background: #464647;
+        border-radius: 4px;
+    }
+    
+    .log-content::-webkit-scrollbar-thumb:hover {
+        background: #5a5a5c;
+    }
+    
+    /* 修复表格显示问题 */
+    .table-responsive {
+        border-radius: 0.375rem;
+        border: 1px solid #dee2e6;
+    }
+    
+    .table th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    
+    .table td {
+        vertical-align: middle;
+    }
+    
+    /* 修复模态框显示问题 */
+    .modal-xl {
+        max-width: 90%;
+    }
+    
+    @media (max-width: 768px) {
+        .modal-xl {
+            max-width: 95%;
+            margin: 10px;
+        }
+        
+        .log-container {
+            max-height: 300px;
+        }
+        
+        .log-content {
+            max-height: 300px;
+            font-size: 12px;
+        }
+    }
+    
+    /* 卡片阴影效果 */
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        border: 1px solid rgba(0, 0, 0, 0.125);
+    }
+    
+    /* 按钮组样式 */
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
@@ -225,6 +380,8 @@
     let caseResults = [];
     let caseDetailModal = null;
     let resultPieChart = null;
+    let currentCaseLog = '';
+    let isLogWrapped = false;
     
     document.addEventListener('DOMContentLoaded', function() {
         // 初始化模态框
@@ -335,18 +492,26 @@
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-1">${result.name || '未命名测试用例'}</h6>
-                            <span class="small text-muted">${result.case_id ? result.case_id.substring(0, 8) : '未知ID'}</span>
+                        <div class="text-truncate" style="max-width: 150px;" title="${result.case_id || '未知ID'}">
+                            ${result.case_id ? result.case_id.substring(0, 8) + '...' : '未知ID'}
                         </div>
                     </td>
                     <td>
-                        <small class="text-muted">${result.test_data || '未设置'}</small>
+                        <div class="text-truncate" style="max-width: 200px;" title="${result.name || '未命名测试用例'}">
+                            ${result.name || '未命名测试用例'}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="text-truncate" style="max-width: 150px;" title="${result.test_data || '未设置'}">
+                            <small class="text-muted">${result.test_data || '未设置'}</small>
+                        </div>
                     </td>
                     <td>
                         <span class="badge bg-${statusClass}">${statusText}</span>
                     </td>
-                    <td>${formatDateTime(result.execution_time) || '-'}</td>
+                    <td>
+                        <small>${formatDateTime(result.execution_time) || '-'}</small>
+                    </td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-info" onclick="viewCaseDetail('${result.case_id}')">
                             <i class="bi bi-eye"></i>
@@ -480,18 +645,26 @@
                 <tr>
                     <td>${index + 1}</td>
                     <td>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-1">${result.name || '未命名测试用例'}</h6>
-                            <span class="small text-muted">${result.case_id ? result.case_id.substring(0, 8) : '未知ID'}</span>
+                        <div class="text-truncate" style="max-width: 150px;" title="${result.case_id || '未知ID'}">
+                            ${result.case_id ? result.case_id.substring(0, 8) + '...' : '未知ID'}
                         </div>
                     </td>
                     <td>
-                        <small class="text-muted">${result.test_data || '未设置'}</small>
+                        <div class="text-truncate" style="max-width: 200px;" title="${result.name || '未命名测试用例'}">
+                            ${result.name || '未命名测试用例'}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="text-truncate" style="max-width: 150px;" title="${result.test_data || '未设置'}">
+                            <small class="text-muted">${result.test_data || '未设置'}</small>
+                        </div>
                     </td>
                     <td>
                         <span class="badge bg-${statusClass}">${statusText}</span>
                     </td>
-                    <td>${formatDateTime(result.execution_time) || '-'}</td>
+                    <td>
+                        <small>${formatDateTime(result.execution_time) || '-'}</small>
+                    </td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-info" onclick="viewCaseDetail('${result.case_id}')">
                             <i class="bi bi-eye"></i>
@@ -519,10 +692,101 @@
         document.getElementById('detailCaseTime').textContent = formatDateTime(caseResult.execution_time) || '-';
         document.getElementById('detailCaseDuration').textContent = formatDuration(caseResult.duration) || '-';
         document.getElementById('detailCaseAnalysis').innerHTML = caseResult.result_analysis || '<span class="text-muted">暂无分析结果</span>';
-        document.getElementById('detailCaseLog').textContent = caseResult.execution_log || '暂无执行日志';
+        
+        // 格式化并显示执行日志
+        currentCaseLog = caseResult.execution_log || '暂无执行日志';
+        displayFormattedLog(currentCaseLog);
         
         // 显示模态框
         caseDetailModal.show();
+    }
+    
+    function displayFormattedLog(logText) {
+        const logElement = document.getElementById('detailCaseLog');
+        
+        // 格式化日志文本
+        const formattedLog = formatLogText(logText);
+        logElement.innerHTML = formattedLog;
+        
+        // 重置换行状态
+        isLogWrapped = false;
+        logElement.classList.remove('wrap');
+    }
+    
+    function formatLogText(logText) {
+        if (!logText || logText === '暂无执行日志') {
+            return '<span class="text-muted">暂无执行日志</span>';
+        }
+        
+        // 按行分割日志
+        const lines = logText.split('\n');
+        const formattedLines = lines.map(line => {
+            // 时间戳格式化
+            line = line.replace(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/g, '<span class="log-timestamp">$1</span>');
+            
+            // 日志级别格式化
+            line = line.replace(/\[INFO\]/g, '<span class="log-level-info">[INFO]</span>');
+            line = line.replace(/\[WARN\]/g, '<span class="log-level-warn">[WARN]</span>');
+            line = line.replace(/\[ERROR\]/g, '<span class="log-level-error">[ERROR]</span>');
+            line = line.replace(/\[DEBUG\]/g, '<span class="log-level-debug">[DEBUG]</span>');
+            
+            // 命令格式化
+            line = line.replace(/(docker exec [^\\n]+)/g, '<span class="log-command">$1</span>');
+            line = line.replace(/(执行命令: .+)/g, '<span class="log-command">$1</span>');
+            
+            // 成功/失败状态格式化
+            line = line.replace(/(成功|SUCCESS|PASSED)/g, '<span class="log-success">$1</span>');
+            line = line.replace(/(失败|FAILED|ERROR|错误)/g, '<span class="log-failure">$1</span>');
+            
+            return line;
+        });
+        
+        return formattedLines.join('\n');
+    }
+    
+    function copyLogToClipboard() {
+        if (!currentCaseLog) {
+            showNotification('warning', '没有可复制的日志内容');
+            return;
+        }
+        
+        navigator.clipboard.writeText(currentCaseLog).then(() => {
+            showNotification('success', '日志已复制到剪贴板');
+        }).catch(err => {
+            console.error('复制失败:', err);
+            showNotification('danger', '复制失败，请手动选择复制');
+        });
+    }
+    
+    function downloadLog() {
+        if (!currentCaseLog) {
+            showNotification('warning', '没有可下载的日志内容');
+            return;
+        }
+        
+        const caseId = document.getElementById('detailCaseId').textContent;
+        const blob = new Blob([currentCaseLog], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `执行日志_${caseId}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        showNotification('success', '日志文件已下载');
+    }
+    
+    function toggleLogWrap() {
+        const logElement = document.getElementById('detailCaseLog');
+        isLogWrapped = !isLogWrapped;
+        
+        if (isLogWrapped) {
+            logElement.classList.add('wrap');
+        } else {
+            logElement.classList.remove('wrap');
+        }
     }
     
     function exportReport() {
@@ -618,4 +882,4 @@
         }, 3000);
     }
 </script>
-{% endblock %} 
+{% endblock %}

@@ -211,42 +211,101 @@
         const algorithmImage = task.algorithm_image || '未配置';
         const datasetUrl = task.dataset_url || '未配置';
         
+        // 检查容器状态
+        let containerStatus = '';
+        let containerActions = '';
+        
+        if (task.container_name) {
+            containerStatus = `
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center text-success">
+                        <i class="bi bi-check-circle me-1"></i> ${task.container_name}
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-info btn-sm" onclick="checkContainerStatus('${task.task_id}')">
+                            <i class="bi bi-arrow-clockwise"></i> 检查状态
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="removeContainer('${task.task_id}')">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            containerStatus = `
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center text-muted">
+                        <i class="bi bi-exclamation-circle me-1"></i> 未创建
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" onclick="setupContainer('${task.task_id}')" ${!task.algorithm_image ? 'disabled' : ''}>
+                        <i class="bi bi-plus-circle"></i> 创建容器
+                    </button>
+                </div>
+            `;
+        }
+        
         container.innerHTML = `
             <ul class="list-group list-group-flush">
                 <li class="list-group-item d-flex flex-column">
-                    <span class="fw-bold mb-1">
+                    <span class="fw-bold mb-2">
                         <i class="bi bi-box me-1"></i> 算法镜像
                     </span>
                     <div class="d-flex align-items-center ${task.algorithm_image ? 'text-success' : 'text-muted'}">
                         ${task.algorithm_image ? 
-                            `<i class="bi bi-check-circle me-1"></i> ${algorithmImage}` :
+                            `<i class="bi bi-check-circle me-1"></i> <code class="text-success">${algorithmImage}</code>` :
                             `<i class="bi bi-exclamation-circle me-1"></i> ${algorithmImage}`
                         }
                     </div>
                 </li>
                 <li class="list-group-item d-flex flex-column">
-                    <span class="fw-bold mb-1">
+                    <span class="fw-bold mb-2">
                         <i class="bi bi-database me-1"></i> 数据集路径
                     </span>
                     <div class="d-flex align-items-center ${task.dataset_url ? 'text-success' : 'text-muted'}">
                         ${task.dataset_url ? 
-                            `<i class="bi bi-check-circle me-1"></i> ${datasetUrl}` :
+                            `<i class="bi bi-check-circle me-1"></i> <code class="text-success">${datasetUrl}</code>` :
                             `<i class="bi bi-exclamation-circle me-1"></i> ${datasetUrl}`
                         }
                     </div>
                 </li>
                 <li class="list-group-item d-flex flex-column">
-                    <span class="fw-bold mb-1">
-                        <i class="bi bi-cpu me-1"></i> 容器名称
+                    <span class="fw-bold mb-2">
+                        <i class="bi bi-cpu me-1"></i> 容器状态
                     </span>
-                    <div class="d-flex align-items-center ${task.container_name ? 'text-success' : 'text-muted'}">
-                        ${task.container_name ? 
-                            `<i class="bi bi-check-circle me-1"></i> ${task.container_name}` :
-                            `<i class="bi bi-exclamation-circle me-1"></i> 未创建`
-                        }
-                    </div>
+                    ${containerStatus}
                 </li>
             </ul>
+            
+            <!-- 容器错误信息显示区域 -->
+            <div id="containerErrorAlert" class="mt-3" style="display: none;">
+                <div class="alert alert-danger">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="alert-heading">
+                                <i class="bi bi-exclamation-triangle me-1"></i> 容器创建失败
+                            </h6>
+                            <p class="mb-0" id="containerErrorMessage"></p>
+                        </div>
+                        <button type="button" class="btn-close" onclick="hideContainerError()"></button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 容器状态信息显示区域 -->
+            <div id="containerStatusAlert" class="mt-3" style="display: none;">
+                <div class="alert alert-info">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="alert-heading">
+                                <i class="bi bi-info-circle me-1"></i> 容器状态
+                            </h6>
+                            <p class="mb-0" id="containerStatusMessage"></p>
+                        </div>
+                        <button type="button" class="btn-close" onclick="hideContainerStatus()"></button>
+                    </div>
+                </div>
+            </div>
+            
             <div class="mt-3 text-center">
                 <a href="/tasks/${task.task_id}/configure" class="btn btn-sm btn-outline-primary">
                     <i class="bi bi-gear me-1"></i> 修改配置
@@ -763,6 +822,154 @@
             console.error('智能分配测试数据失败:', error);
             showNotification('danger', `智能分配测试数据失败: ${error.message}`);
         });
+    }
+    
+    // 容器管理相关函数
+    function setupContainer(taskId) {
+        if (!confirm('确定要创建Docker容器吗？这可能需要几分钟时间。')) {
+            return;
+        }
+        
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在创建Docker容器，请稍候...');
+        
+        // 发送API请求创建容器
+        fetch(`/api/tasks/${taskId}/setup-container`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('容器创建结果:', data);
+            
+            if (data.success) {
+                showNotification('success', `
+                    <div>
+                        <div><i class="bi bi-check-circle me-2"></i>Docker容器创建成功！</div>
+                        <small>容器名称: ${data.container_name}</small>
+                    </div>
+                `);
+                
+                // 刷新页面以显示最新状态
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                // 显示详细错误信息
+                showContainerError(data.error || '容器创建失败');
+                showNotification('danger', `容器创建失败: ${data.error || '未知错误'}`);
+            }
+        })
+        .catch(error => {
+            console.error('创建容器失败:', error);
+            showContainerError(`网络错误: ${error.message}`);
+            showNotification('danger', `创建容器失败: ${error.message}`);
+        });
+    }
+    
+    function checkContainerStatus(taskId) {
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在检查容器状态...');
+        
+        // 发送API请求检查容器状态
+        fetch(`/api/tasks/${taskId}/container-status`)
+        .then(response => response.json())
+        .then(data => {
+            console.log('容器状态检查结果:', data);
+            
+            if (data.success) {
+                showContainerStatus(`容器运行正常 - ${data.status || '状态未知'}`);
+                showNotification('success', '容器状态检查完成');
+            } else {
+                showContainerError(data.error || '容器状态检查失败');
+                showNotification('warning', `容器状态异常: ${data.error || '未知错误'}`);
+            }
+        })
+        .catch(error => {
+            console.error('检查容器状态失败:', error);
+            showContainerError(`网络错误: ${error.message}`);
+            showNotification('danger', `检查容器状态失败: ${error.message}`);
+        });
+    }
+    
+    function removeContainer(taskId) {
+        if (!confirm('确定要删除Docker容器吗？这将清理所有容器资源。')) {
+            return;
+        }
+        
+        // 显示加载状态
+        showNotification('info', '<i class="bi bi-hourglass-split me-2"></i>正在删除Docker容器...');
+        
+        // 发送API请求删除容器
+        fetch(`/api/tasks/${taskId}/remove-container`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('容器删除结果:', data);
+            
+            if (data.success) {
+                showNotification('success', '<i class="bi bi-check-circle me-2"></i>Docker容器已成功删除');
+                
+                // 刷新页面以显示最新状态
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showContainerError(data.error || '容器删除失败');
+                showNotification('danger', `容器删除失败: ${data.error || '未知错误'}`);
+            }
+        })
+        .catch(error => {
+            console.error('删除容器失败:', error);
+            showContainerError(`网络错误: ${error.message}`);
+            showNotification('danger', `删除容器失败: ${error.message}`);
+        });
+    }
+    
+    function showContainerError(message) {
+        const errorAlert = document.getElementById('containerErrorAlert');
+        const errorMessage = document.getElementById('containerErrorMessage');
+        
+        if (errorAlert && errorMessage) {
+            errorMessage.innerHTML = message;
+            errorAlert.style.display = 'block';
+            
+            // 隐藏状态信息
+            hideContainerStatus();
+        }
+    }
+    
+    function showContainerStatus(message) {
+        const statusAlert = document.getElementById('containerStatusAlert');
+        const statusMessage = document.getElementById('containerStatusMessage');
+        
+        if (statusAlert && statusMessage) {
+            statusMessage.innerHTML = message;
+            statusAlert.style.display = 'block';
+            
+            // 隐藏错误信息
+            hideContainerError();
+        }
+    }
+    
+    function hideContainerError() {
+        const errorAlert = document.getElementById('containerErrorAlert');
+        if (errorAlert) {
+            errorAlert.style.display = 'none';
+        }
+    }
+    
+    function hideContainerStatus() {
+        const statusAlert = document.getElementById('containerStatusAlert');
+        if (statusAlert) {
+            statusAlert.style.display = 'none';
+        }
     }
 </script>
 {% endblock %} 
