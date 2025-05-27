@@ -203,6 +203,7 @@ def format_test_case(case: DBTestCase) -> TestCase:
         expected_result=expected_output.get("expected_result", ""),
         validation_method=expected_output.get("validation_method", ""),
         document_id=case.document_id,
+        test_data=case.test_data,
         actual_output=actual_output,
         result_analysis=case.result_analysis,
         is_passed=case.is_passed,
@@ -308,17 +309,21 @@ async def upload_document(
 @router.get("/testcases", response_model=TestCasesResponse)
 async def get_test_cases(
     document_id: Optional[str] = Query(None, description="文档ID，可选"),
+    task_id: Optional[str] = Query(None, description="任务ID，可选"),
     db: Session = Depends(get_db)
 ):
     """
     获取测试用例列表
     
     - **document_id**: 可选的文档ID，如果提供则只返回该文档的测试用例
+    - **task_id**: 可选的任务ID，如果提供则只返回该任务的测试用例
     
     返回测试用例列表
     """
     query = db.query(DBTestCase)
-    if document_id:
+    if task_id:
+        query = query.filter(DBTestCase.task_id == task_id)
+    elif document_id:
         query = query.filter(DBTestCase.document_id == document_id)
     
     cases = query.all()
@@ -1426,6 +1431,58 @@ async def get_document_task_info(
     except Exception as e:
         log.error(f"查询文档任务信息异常: {str(e)}")
         raise HTTPException(status_code=500, detail=f"查询文档任务信息异常: {str(e)}")
+
+# 获取单个任务详情
+@router.get("/tasks/{task_id}", response_model=TestTaskItem)
+async def get_task_detail(
+    task_id: str = Path(..., description="任务ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取单个测试任务的详细信息
+    
+    - **task_id**: 任务ID
+    
+    Returns:
+        TestTaskItem: 任务详细信息
+    """
+    log.info(f"获取任务详情: {task_id}")
+    
+    try:
+        # 查询任务
+        task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"未找到任务: {task_id}")
+        
+        # 获取任务关联的测试用例数量
+        test_cases_count = db.query(DBTestCase).filter(DBTestCase.task_id == task.task_id).count()
+        
+        return TestTaskItem(
+            id=task.id,
+            task_id=task.task_id,
+            document_id=task.document_id,
+            requirement_doc=task.requirement_doc,
+            description=task.description,
+            algorithm_image=task.algorithm_image,
+            container_name=task.container_name,
+            dataset_url=task.dataset_url,
+            dataset_type=task.dataset_type,
+            dataset_format=task.dataset_format,
+            container_data_path=task.container_data_path,
+            container_config=task.container_config,
+            status=task.status or "unknown",
+            created_at=task.created_at.isoformat() if task.created_at else None,
+            updated_at=task.updated_at.isoformat() if task.updated_at else None,
+            test_cases_count=test_cases_count
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"获取任务详情失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取任务详情失败: {str(e)}"
+        )
 
 @router.get("/tasks", response_model=TestTasksResponse)
 async def get_all_tasks(

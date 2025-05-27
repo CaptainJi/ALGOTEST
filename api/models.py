@@ -19,6 +19,7 @@ class TestCase(BaseModel):
     expected_result: str = Field(description="预期结果")
     validation_method: str = Field(description="验证方法")
     document_id: str = Field(description="所属文档ID")
+    test_data: Optional[str] = Field(None, description="测试数据路径")
     actual_output: Optional[str] = Field(None, description="实际输出结果")
     result_analysis: Optional[str] = Field(None, description="结果分析")
     is_passed: Optional[bool] = Field(None, description="是否通过测试")

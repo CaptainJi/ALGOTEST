@@ -976,8 +976,53 @@ async def save_result(state: ExecutionState) -> ExecutionState:
             if error_description:
                 result_analysis.append(f"错误原因: {error_description}")
         
+        # 添加算法分析结果
+        if ai_analysis and ai_analysis.get("algorithm_result"):
+            algorithm_result = ai_analysis["algorithm_result"]
+            result_analysis.append("\n=== 算法分析结果 ===")
+            
+            if isinstance(algorithm_result, dict):
+                if algorithm_result.get("format") == "extracted":
+                    data = algorithm_result.get("data", {})
+                    result_analysis.append(f"解析状态: {algorithm_result.get('summary', '未知')}")
+                    
+                    if "algorithm_status" in data:
+                        result_analysis.append(f"算法执行状态: {data['algorithm_status']}")
+                    
+                    if "detection" in data:
+                        result_analysis.append(f"检测结果: {data['detection']}")
+                    
+                    if "confidence" in data:
+                        result_analysis.append(f"置信度: {data['confidence']}")
+                    
+                    if "classification" in data:
+                        result_analysis.append(f"分类结果: {data['classification']}")
+                    
+                    if "processing_time" in data:
+                        result_analysis.append(f"算法处理时间: {data['processing_time']}")
+                    
+                    if "output_file" in data:
+                        result_analysis.append(f"输出文件: {data['output_file']}")
+                        
+                elif algorithm_result.get("format") == "text_lines":
+                    result_analysis.append(f"关键信息: {algorithm_result.get('summary', '未知')}")
+                    lines = algorithm_result.get("data", [])
+                    for line in lines[:5]:  # 只显示前5行
+                        result_analysis.append(f"  - {line}")
+                    if len(lines) > 5:
+                        result_analysis.append(f"  ... 还有 {len(lines) - 5} 行")
+                        
+                elif algorithm_result.get("format") == "json":
+                    result_analysis.append("成功解析JSON格式算法结果")
+                    result_analysis.append(f"数据: {str(algorithm_result.get('data', {}))[:200]}...")
+                    
+                else:
+                    result_analysis.append(f"算法结果: {str(algorithm_result)[:200]}...")
+            else:
+                result_analysis.append(f"算法结果: {str(algorithm_result)[:200]}...")
+        
         if execution_time > 0:
-            result_analysis.append(f"执行耗时: {execution_time}毫秒")
+            result_analysis.append(f"\n执行耗时: {execution_time}毫秒")
         
         # 更新测试用例状态和结果
         with get_db() as db:
@@ -1001,6 +1046,7 @@ async def save_result(state: ExecutionState) -> ExecutionState:
                     "error_messages": error_messages,
                     "ai_analysis": ai_analysis,
                     "analysis_report": analysis_report,
+                    "algorithm_result": ai_analysis.get("algorithm_result") if ai_analysis else None,  # 添加算法结果
                     "raw_outputs": [
                         {
                             "type": "stdout",
@@ -1928,6 +1974,176 @@ echo "容器验证成功: 已完全删除"
         }
 
 
+def extract_algorithm_result(raw_output: str) -> Dict[str, Any]:
+    """
+    从算法执行的原始输出中提取结构化的算法结果
+    
+    Args:
+        raw_output: 算法执行的原始输出
+        
+    Returns:
+        解析后的算法结果字典
+    """
+    try:
+        # 1. 尝试查找JSON格式的输出
+        import re
+        import json
+        
+        # 查找可能的JSON输出模式
+        json_patterns = [
+            r'\{[^{}]*"[^"]*"[^{}]*:[^{}]*\}',  # 简单JSON对象
+            r'\{.*?\}',  # 任何大括号包围的内容
+            r'\[.*?\]',  # 数组格式
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, raw_output, re.DOTALL)
+            for match in matches:
+                try:
+                    result = json.loads(match)
+                    if isinstance(result, (dict, list)) and result:
+                        log.info(f"成功解析JSON格式算法结果")
+                        return {"format": "json", "data": result, "raw": match}
+                except json.JSONDecodeError:
+                    continue
+        
+        # 2. 查找特定的算法输出模式
+        algorithm_patterns = {
+            # 检测结果模式
+            "detection": [
+                r"检测到\s*(\d+)\s*个.*?对象",
+                r"detected\s+(\d+)\s+objects?",
+                r"found\s+(\d+)\s+items?",
+            ],
+            # 置信度模式
+            "confidence": [
+                r"置信度[：:]\s*([\d.]+)",
+                r"confidence[：:]\s*([\d.]+)",
+                r"score[：:]\s*([\d.]+)",
+            ],
+            # 坐标模式
+            "coordinates": [
+                r"坐标[：:]\s*\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)",
+                r"bbox[：:]\s*\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]",
+                r"位置[：:]\s*x=(\d+),\s*y=(\d+),\s*w=(\d+),\s*h=(\d+)",
+            ],
+            # 分类结果模式
+            "classification": [
+                r"分类结果[：:]\s*([^\n\r]+)",
+                r"class[：:]\s*([^\n\r]+)",
+                r"category[：:]\s*([^\n\r]+)",
+            ],
+            # 处理时间模式
+            "processing_time": [
+                r"处理时间[：:]\s*([\d.]+)\s*ms",
+                r"processing time[：:]\s*([\d.]+)\s*ms",
+                r"耗时[：:]\s*([\d.]+)\s*毫秒",
+            ]
+        }
+        
+        extracted_data = {}
+        for category, patterns in algorithm_patterns.items():
+            for pattern in patterns:
+                matches = re.findall(pattern, raw_output, re.IGNORECASE)
+                if matches:
+                    extracted_data[category] = matches
+                    break
+        
+        # 3. 查找输出文件路径
+        output_file_patterns = [
+            r"输出文件[：:]\s*([^\n\r]+)",
+            r"output file[：:]\s*([^\n\r]+)",
+            r"保存到[：:]\s*([^\n\r]+)",
+            r"saved to[：:]\s*([^\n\r]+)",
+        ]
+        
+        for pattern in output_file_patterns:
+            matches = re.findall(pattern, raw_output, re.IGNORECASE)
+            if matches:
+                extracted_data["output_file"] = matches[0].strip()
+                break
+        
+        # 4. 检查是否有算法特定的成功/失败标识
+        success_indicators = [
+            "算法执行成功", "algorithm completed successfully", 
+            "处理完成", "processing completed",
+            "检测完成", "detection completed"
+        ]
+        
+        failure_indicators = [
+            "算法执行失败", "algorithm failed", 
+            "处理失败", "processing failed",
+            "检测失败", "detection failed",
+            "cv::imread.*failed", "无法读取", "cannot read"
+        ]
+        
+        algorithm_status = "unknown"
+        for indicator in success_indicators:
+            if re.search(indicator, raw_output, re.IGNORECASE):
+                algorithm_status = "success"
+                break
+        
+        if algorithm_status == "unknown":
+            for indicator in failure_indicators:
+                if re.search(indicator, raw_output, re.IGNORECASE):
+                    algorithm_status = "failed"
+                    break
+        
+        extracted_data["algorithm_status"] = algorithm_status
+        
+        # 5. 如果提取到了有用信息，返回结果
+        if extracted_data:
+            log.info(f"成功提取算法结果: {list(extracted_data.keys())}")
+            return {
+                "format": "extracted",
+                "data": extracted_data,
+                "summary": f"提取到 {len(extracted_data)} 项算法结果"
+            }
+        
+        # 6. 如果没有找到结构化数据，尝试提取关键信息行
+        lines = raw_output.split('\n')
+        important_lines = []
+        
+        # 查找包含关键词的行
+        keywords = [
+            "result", "结果", "output", "输出", "detection", "检测",
+            "classification", "分类", "confidence", "置信度", "score", "得分",
+            "time", "时间", "ms", "毫秒", "error", "错误", "warning", "警告"
+        ]
+        
+        for line in lines:
+            line = line.strip()
+            if line and any(keyword in line.lower() for keyword in keywords):
+                important_lines.append(line)
+        
+        if important_lines:
+            return {
+                "format": "text_lines",
+                "data": important_lines,
+                "summary": f"提取到 {len(important_lines)} 行关键信息"
+            }
+        
+        # 7. 最后返回原始输出的摘要
+        return {
+            "format": "raw_summary",
+            "data": {
+                "total_lines": len(lines),
+                "non_empty_lines": len([l for l in lines if l.strip()]),
+                "output_length": len(raw_output),
+                "first_100_chars": raw_output[:100] if raw_output else ""
+            },
+            "summary": "无法解析结构化结果，返回原始输出摘要"
+        }
+        
+    except Exception as e:
+        log.error(f"解析算法结果时出错: {e}")
+        return {
+            "format": "error",
+            "data": {"error": str(e)},
+            "summary": f"解析失败: {str(e)}"
+        }
+
+
 def try_clear_container_record(task_id: str) -> None:
     """
     尝试清除任务的容器记录，无论是否成功都不影响调用方
@@ -2017,7 +2233,19 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
             error_messages.append("检测到非零退出码")
             log.warning("检测到非零退出码")
         
-        # 3. 使用AI分析执行结果（如果有预期输出）
+        # 3. 解析算法输出结果
+        algorithm_result = None
+        try:
+            # 尝试从输出中提取算法结果
+            algorithm_result = extract_algorithm_result(raw_output)
+            if algorithm_result:
+                log.info(f"成功解析算法结果: {len(str(algorithm_result))} 字符")
+            else:
+                log.warning("未能解析出算法结果")
+        except Exception as e:
+            log.warning(f"解析算法结果失败: {e}")
+        
+        # 4. 使用AI分析执行结果（如果有预期输出）
         ai_analysis_result = None
         expected_output = current_case.get("expected_output")
         
@@ -2042,12 +2270,15 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
 预期输出：
 {json.dumps(expected_data, ensure_ascii=False, indent=2)}
 
+算法解析结果：
+{json.dumps(algorithm_result, ensure_ascii=False, indent=2) if algorithm_result else "无法解析"}
+
 实际执行输出：
 {raw_output[:2000]}...
 
 请从以下几个方面分析：
 1. 执行是否成功完成（没有错误、异常或失败）
-2. 输出结果是否符合预期
+2. 算法输出结果是否符合预期
 3. 是否有性能问题或警告
 4. 整体测试是否通过
 
@@ -2057,7 +2288,8 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
   "confidence": 0.0-1.0,
   "analysis": "详细分析说明",
   "issues": ["发现的问题列表"],
-  "recommendations": ["改进建议"]
+  "recommendations": ["改进建议"],
+  "algorithm_result": {{"检测结果": "解析的算法输出"}}
 }}
 """
                 
@@ -2065,21 +2297,23 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
                 log.info("使用AI分析执行结果...")
                 # 暂时使用规则分析，后续可以集成AI
                 ai_analysis_result = {
-                    "success": not error_found,
-                    "confidence": 0.8 if not error_found else 0.2,
-                    "analysis": f"基于规则分析，{'未发现' if not error_found else '发现'}明显错误",
+                    "success": not error_found and algorithm_result is not None,
+                    "confidence": 0.8 if not error_found and algorithm_result else 0.2,
+                    "analysis": f"基于规则分析，{'未发现' if not error_found else '发现'}明显错误，{'成功解析' if algorithm_result else '未能解析'}算法结果",
                     "issues": error_messages,
-                    "recommendations": ["检查执行日志中的错误信息"] if error_found else []
+                    "recommendations": ["检查执行日志中的错误信息"] if error_found else [],
+                    "algorithm_result": algorithm_result
                 }
                 
             except Exception as e:
                 log.warning(f"AI分析失败，使用规则分析: {e}")
                 ai_analysis_result = {
-                    "success": not error_found,
+                    "success": not error_found and algorithm_result is not None,
                     "confidence": 0.6,
                     "analysis": "AI分析失败，仅基于规则判断",
                     "issues": error_messages,
-                    "recommendations": []
+                    "recommendations": [],
+                    "algorithm_result": algorithm_result
                 }
         
         # 4. 综合判断最终结果

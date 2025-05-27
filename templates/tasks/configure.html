@@ -268,23 +268,27 @@
     }
     
     function loadTaskData() {
-        fetch(`/api/tasks`)
-            .then(response => response.json())
-            .then(data => {
-                // 找到对应的任务
-                taskData = (data.tasks || []).find(task => task.task_id === taskId);
-                
-                if (taskData) {
-                    // 更新页面信息
-                    updateTaskInfo(taskData);
-                    fillConfigForms(taskData);
-                } else {
-                    showError(document.getElementById('taskInfoCard'), `未找到ID为 ${taskId} 的任务`);
+        fetch(`/api/tasks/${taskId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
                 }
+                return response.json();
+            })
+            .then(data => {
+                taskData = data;
+                
+                // 更新页面信息
+                updateTaskInfo(taskData);
+                fillConfigForms(taskData);
             })
             .catch(error => {
                 console.error('获取任务信息失败:', error);
-                showError(document.getElementById('taskInfoCard'), '加载任务信息失败，请刷新重试');
+                if (error.message.includes('404')) {
+                    showError(document.getElementById('taskInfoCard'), `未找到ID为 ${taskId} 的任务`);
+                } else {
+                    showError(document.getElementById('taskInfoCard'), '加载任务信息失败，请刷新重试');
+                }
             });
     }
     

@@ -135,56 +135,99 @@
     </div>
 </div>
 
-<!-- 批量配置测试数据模态框 -->
+<!-- 批量设置测试数据模态框 -->
 <div class="modal fade" id="batchTestDataConfigModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="bi bi-gear-wide-connected me-2"></i>批量配置测试数据
-                </h5>
+                <h5 class="modal-title">批量设置测试数据</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle me-2"></i>
-                    为未配置测试数据的用例批量设置测试数据路径。支持使用占位符：
-                    <ul class="mb-0 mt-2">
-                        <li><code>{case_id}</code> - 测试用例ID</li>
-                        <li><code>{case_name}</code> - 测试用例名称</li>
-                        <li><code>{index}</code> - 序号（从1开始）</li>
-                    </ul>
-                </div>
-                
                 <form id="batchTestDataConfigForm">
                     <div class="mb-3">
-                        <label for="batchTestDataPattern" class="form-label">测试数据路径模式 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="batchTestDataPattern" 
-                               placeholder="例如：images/test_{index}.jpg 或 data/{case_name}.png" required>
-                        <div class="form-text">
-                            相对于数据集根目录的路径模式
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">数据集根目录</label>
-                        <input type="text" class="form-control" id="batchDatasetRootPath" readonly>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">预览效果</label>
-                        <div id="batchPreviewContainer" class="border rounded p-3 bg-light">
-                            <div class="text-muted">输入路径模式后将显示预览效果</div>
-                        </div>
+                        <label for="batchTestDataPath" class="form-label">测试数据路径</label>
+                        <input type="text" class="form-control" id="batchTestDataPath" required>
+                        <div class="form-text">请输入测试数据文件路径，例如：test_image.jpg</div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="bi bi-x-lg me-1"></i>取消
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveBatchTestDataConfig()">确认设置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 测试执行进度模态框 -->
+<div class="modal fade" id="executionProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-play-circle me-2"></i>测试执行进度
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>整体进度</span>
+                        <span id="progressText">0/0</span>
+                    </div>
+                    <div class="progress mb-3" style="height: 20px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="progressBar" 
+                             role="progressbar" 
+                             style="width: 0%">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-primary" id="totalCases">0</div>
+                            <small class="text-muted">总用例数</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-info" id="executedCases">0</div>
+                            <small class="text-muted">已执行</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-success" id="passedCases">0</div>
+                            <small class="text-muted">通过</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-danger" id="failedCases">0</div>
+                            <small class="text-muted">失败</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">执行日志</h6>
+                    </div>
+                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                        <div id="executionLog" class="font-monospace small">
+                            <div class="text-muted">等待开始执行...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="closeProgressBtn" onclick="closeProgressModal()" disabled>
+                    关闭
                 </button>
-                <button type="button" class="btn btn-primary" onclick="saveBatchTestDataConfig()">
-                    <i class="bi bi-save me-1"></i>批量保存
+                <button type="button" class="btn btn-primary" id="viewResultsBtn" onclick="viewResults()" style="display: none;">
+                    查看结果
                 </button>
             </div>
         </div>
@@ -205,27 +248,31 @@
     });
 
     function loadTaskData() {
-        // 获取任务信息
-        fetch('/api/tasks')
-            .then(response => response.json())
-            .then(data => {
-                // 找到对应的任务
-                taskData = (data.tasks || []).find(task => task.task_id === taskId);
-                
-                if (taskData) {
-                    // 更新页面信息
-                    updateTaskInfo(taskData);
-                    updateConfigInfo(taskData);
-                    updateTaskStatus(taskData);
-                    loadTestCases(taskData.document_id);
-                    updateActionButtons(taskData);
-                } else {
-                    showError(document.getElementById('taskInfoCard'), `未找到ID为 ${taskId} 的任务`);
+        // 获取单个任务信息
+        fetch(`/api/tasks/${taskId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
                 }
+                return response.json();
+            })
+            .then(data => {
+                taskData = data;
+                
+                // 更新页面信息
+                updateTaskInfo(taskData);
+                updateConfigInfo(taskData);
+                updateTaskStatus(taskData);
+                loadTestCases(taskData.document_id);
+                updateActionButtons(taskData);
             })
             .catch(error => {
                 console.error('获取任务信息失败:', error);
-                showError(document.getElementById('taskInfoCard'), '加载任务信息失败，请刷新重试');
+                if (error.message.includes('404')) {
+                    showError(document.getElementById('taskInfoCard'), `未找到ID为 ${taskId} 的任务`);
+                } else {
+                    showError(document.getElementById('taskInfoCard'), '加载任务信息失败，请刷新重试');
+                }
             });
     }
 
@@ -789,6 +836,9 @@
             return;
         }
         
+        // 显示进度模态框
+        showExecutionProgress(taskId);
+        
         // 更新UI状态
         const executeBtn = document.getElementById('executeBtn');
         executeBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 执行中...';
@@ -810,21 +860,30 @@
         .then(data => {
             console.log('测试执行任务已启动:', data);
             
-            // 提示用户执行已开始
-            showNotification('success', `测试执行已开始，共 ${data.cases_total} 个测试用例`);
+            // 更新进度显示
+            updateExecutionProgress({
+                total: data.cases_total || 0,
+                executed: data.cases_executed || 0,
+                passed: data.cases_passed || 0,
+                failed: data.cases_failed || 0,
+                message: data.message || '测试执行已开始'
+            });
             
-            // 定时刷新页面，获取最新状态
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
+            // 开始轮询状态
+            startProgressPolling(taskId);
         })
         .catch(error => {
             console.error('执行测试任务失败:', error);
-            showNotification('danger', `执行测试任务失败: ${error.message}`);
+            
+            // 更新进度显示错误信息
+            addExecutionLog(`错误: ${error.message}`, 'danger');
             
             // 恢复按钮状态
             executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
             executeBtn.disabled = false;
+            
+            // 启用关闭按钮
+            document.getElementById('closeProgressBtn').disabled = false;
         });
     }
     
@@ -847,6 +906,153 @@
             alertDiv.classList.remove('show');
             setTimeout(() => alertDiv.remove(), 300);
         }, 5000);
+    }
+
+    // 进度相关变量
+    let progressPollingInterval = null;
+    let currentTaskId = null;
+
+    // 显示执行进度模态框
+    function showExecutionProgress(taskId) {
+        currentTaskId = taskId;
+        
+        // 重置进度显示
+        document.getElementById('progressText').textContent = '0/0';
+        document.getElementById('progressBar').style.width = '0%';
+        document.getElementById('totalCases').textContent = '0';
+        document.getElementById('executedCases').textContent = '0';
+        document.getElementById('passedCases').textContent = '0';
+        document.getElementById('failedCases').textContent = '0';
+        document.getElementById('executionLog').innerHTML = '<div class="text-muted">正在启动测试执行...</div>';
+        
+        // 禁用关闭按钮
+        document.getElementById('closeProgressBtn').disabled = true;
+        document.getElementById('viewResultsBtn').style.display = 'none';
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('executionProgressModal'));
+        modal.show();
+    }
+
+    // 更新执行进度
+    function updateExecutionProgress(data) {
+        const total = data.total || 0;
+        const executed = data.executed || 0;
+        const passed = data.passed || 0;
+        const failed = data.failed || 0;
+        
+        // 更新进度条
+        const percentage = total > 0 ? Math.round((executed / total) * 100) : 0;
+        document.getElementById('progressText').textContent = `${executed}/${total}`;
+        document.getElementById('progressBar').style.width = `${percentage}%`;
+        
+        // 更新统计数字
+        document.getElementById('totalCases').textContent = total;
+        document.getElementById('executedCases').textContent = executed;
+        document.getElementById('passedCases').textContent = passed;
+        document.getElementById('failedCases').textContent = failed;
+        
+        // 添加日志消息
+        if (data.message) {
+            addExecutionLog(data.message, 'info');
+        }
+        
+        // 如果执行完成，启用关闭按钮和查看结果按钮
+        if (executed >= total && total > 0) {
+            document.getElementById('closeProgressBtn').disabled = false;
+            document.getElementById('viewResultsBtn').style.display = 'inline-block';
+            
+            // 停止轮询
+            if (progressPollingInterval) {
+                clearInterval(progressPollingInterval);
+                progressPollingInterval = null;
+            }
+            
+            // 恢复执行按钮状态
+            const executeBtn = document.getElementById('executeBtn');
+            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
+            executeBtn.disabled = false;
+            
+            // 添加完成日志
+            const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+            addExecutionLog(`测试执行完成！成功率: ${successRate}% (${passed}/${total})`, 'success');
+        }
+    }
+
+    // 添加执行日志
+    function addExecutionLog(message, type = 'info') {
+        const logContainer = document.getElementById('executionLog');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = `mb-1 text-${type === 'info' ? 'primary' : type === 'success' ? 'success' : type === 'danger' ? 'danger' : 'secondary'}`;
+        logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+        
+        logContainer.appendChild(logEntry);
+        
+        // 滚动到底部
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // 开始轮询进度
+    function startProgressPolling(taskId) {
+        // 清除之前的轮询
+        if (progressPollingInterval) {
+            clearInterval(progressPollingInterval);
+        }
+        
+        // 开始新的轮询
+        progressPollingInterval = setInterval(() => {
+            fetch(`/api/tasks/${taskId}/status`)
+                .then(response => response.json())
+                .then(data => {
+                    updateExecutionProgress({
+                        total: data.total_cases || 0,
+                        executed: data.completed_cases || 0,
+                        passed: data.passed_cases || 0,
+                        failed: data.failed_cases || 0,
+                        message: null // 不重复显示消息
+                    });
+                })
+                .catch(error => {
+                    console.error('轮询状态失败:', error);
+                    addExecutionLog(`状态查询失败: ${error.message}`, 'danger');
+                });
+        }, 2000); // 每2秒轮询一次
+    }
+
+    // 关闭进度模态框
+    function closeProgressModal() {
+        // 停止轮询
+        if (progressPollingInterval) {
+            clearInterval(progressPollingInterval);
+            progressPollingInterval = null;
+        }
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('executionProgressModal'));
+        if (modal) {
+            modal.hide();
+        }
+        
+        // 刷新页面以获取最新状态
+        setTimeout(() => {
+            window.location.reload();
+        }, 500);
+    }
+
+    // 查看结果
+    function viewResults() {
+        // 关闭进度模态框
+        closeProgressModal();
+        
+        // 滚动到测试用例列表
+        setTimeout(() => {
+            const testCasesSection = document.getElementById('testCasesCard');
+            if (testCasesSection) {
+                testCasesSection.scrollIntoView({ behavior: 'smooth' });
+            }
+        }, 600);
     }
 
     function getStatusIcon(status) {
@@ -1235,137 +1441,81 @@
          });
      }
      
-     // 批量配置测试数据相关函数
-     function batchConfigTestData() {
-         // 获取未配置测试数据的用例
-         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
-         
-         if (unconfiguredCases.length === 0) {
-             showNotification('info', '所有测试用例都已配置测试数据');
-             return;
-         }
-         
-         // 填充模态框数据
-         document.getElementById('batchDatasetRootPath').value = taskData.dataset_url || '未配置';
-         document.getElementById('batchTestDataPattern').value = '';
-         document.getElementById('batchPreviewContainer').innerHTML = '<div class="text-muted">输入路径模式后将显示预览效果</div>';
-         
-         // 绑定输入事件以实时预览
-         const patternInput = document.getElementById('batchTestDataPattern');
-         patternInput.oninput = updateBatchPreview;
-         
-         // 显示模态框
-         const modal = new bootstrap.Modal(document.getElementById('batchTestDataConfigModal'));
-         modal.show();
-     }
+         // 批量设置测试数据相关函数
+    function batchConfigTestData() {
+        // 获取未配置测试数据的用例
+        const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+        
+        if (unconfiguredCases.length === 0) {
+            showNotification('info', '所有测试用例都已配置测试数据');
+            return;
+        }
+        
+        // 清空输入框
+        document.getElementById('batchTestDataPath').value = '';
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('batchTestDataConfigModal'));
+        modal.show();
+    }
      
-     function updateBatchPreview() {
-         const pattern = document.getElementById('batchTestDataPattern').value.trim();
-         const previewContainer = document.getElementById('batchPreviewContainer');
-         
-         if (!pattern) {
-             previewContainer.innerHTML = '<div class="text-muted">输入路径模式后将显示预览效果</div>';
-             return;
-         }
-         
-         // 获取未配置测试数据的用例
-         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
-         
-         if (unconfiguredCases.length === 0) {
-             previewContainer.innerHTML = '<div class="text-muted">没有需要配置的测试用例</div>';
-             return;
-         }
-         
-         // 生成预览
-         let previewHtml = '<div class="small"><strong>预览效果（前5个）：</strong></div>';
-         previewHtml += '<ul class="list-unstyled mt-2 mb-0">';
-         
-         unconfiguredCases.slice(0, 5).forEach((testCase, index) => {
-             const generatedPath = generateTestDataPath(pattern, testCase, index + 1);
-             previewHtml += `
-                 <li class="mb-1">
-                     <span class="badge bg-light text-dark me-2">${testCase.id ? testCase.id.substring(0, 8) : '未知ID'}</span>
-                     <code>${generatedPath}</code>
-                 </li>
-             `;
-         });
-         
-         if (unconfiguredCases.length > 5) {
-             previewHtml += `<li class="text-muted">... 还有 ${unconfiguredCases.length - 5} 个用例</li>`;
-         }
-         
-         previewHtml += '</ul>';
-         previewContainer.innerHTML = previewHtml;
-     }
-     
-     function generateTestDataPath(pattern, testCase, index) {
-         return pattern
-             .replace(/\{case_id\}/g, testCase.id || 'unknown')
-             .replace(/\{case_name\}/g, testCase.name || 'unnamed')
-             .replace(/\{index\}/g, index.toString());
-     }
-     
-     function saveBatchTestDataConfig() {
-         const pattern = document.getElementById('batchTestDataPattern').value.trim();
-         
-         if (!pattern) {
-             showNotification('warning', '请输入测试数据路径模式');
-             return;
-         }
-         
-         // 获取未配置测试数据的用例
-         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
-         
-         if (unconfiguredCases.length === 0) {
-             showNotification('info', '没有需要配置的测试用例');
-             return;
-         }
-         
-         // 生成批量更新数据
-         const updates = unconfiguredCases.map((testCase, index) => ({
-             case_id: testCase.id,
-             test_data: generateTestDataPath(pattern, testCase, index + 1)
-         }));
-         
-         // 显示加载状态
-         const saveBtn = document.querySelector('#batchTestDataConfigModal .btn-primary');
-         const originalText = saveBtn.innerHTML;
-         saveBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>保存中...';
-         saveBtn.disabled = true;
-         
-         // 发送API请求批量更新测试数据
-         fetch(`/api/tasks/${taskId}/test-data`, {
-             method: 'PUT',
-             headers: {
-                 'Content-Type': 'application/json'
-             },
-             body: JSON.stringify({ updates })
-         })
-         .then(response => response.json())
-         .then(data => {
-             if (data.message) {
-                 // 关闭模态框
-                 const modal = bootstrap.Modal.getInstance(document.getElementById('batchTestDataConfigModal'));
-                 modal.hide();
-                 
-                 // 显示成功消息
-                 showNotification('success', `成功为 ${updates.length} 个测试用例配置测试数据`);
-                 
-                 // 刷新测试用例列表
-                 loadTestCases(taskData.document_id);
-             } else {
-                 throw new Error(data.error || '批量保存失败');
-             }
-         })
-         .catch(error => {
-             console.error('批量保存测试数据配置失败:', error);
-             showNotification('danger', `批量保存测试数据配置失败: ${error.message}`);
-         })
-         .finally(() => {
-             // 恢复按钮状态
-             saveBtn.innerHTML = originalText;
-             saveBtn.disabled = false;
-         });
-     }
+         function saveBatchTestDataConfig() {
+        const testDataPath = document.getElementById('batchTestDataPath').value.trim();
+        
+        if (!testDataPath) {
+            showNotification('warning', '请输入测试数据路径');
+            return;
+        }
+        
+        // 获取未配置测试数据的用例
+        const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+        
+        if (unconfiguredCases.length === 0) {
+            showNotification('info', '没有需要配置的测试用例');
+            return;
+        }
+        
+        // 显示加载状态
+        const saveBtn = document.querySelector('#batchTestDataConfigModal .btn-primary');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>保存中...';
+        saveBtn.disabled = true;
+        
+        // 使用与用例管理页面相同的API接口
+        fetch('/api/testcases/batch-set-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                case_ids: unconfiguredCases.map(tc => tc.id),
+                test_data: testDataPath
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('batchTestDataConfigModal'));
+            modal.hide();
+            
+            // 显示成功消息
+            showNotification('success', '测试数据设置成功');
+            
+            // 清空输入框
+            document.getElementById('batchTestDataPath').value = '';
+            
+            // 刷新测试用例列表
+            loadTestCases(taskData.document_id);
+        })
+        .catch(error => {
+            console.error('设置测试数据失败:', error);
+            showNotification('danger', `设置测试数据失败: ${error.message}`);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        });
+    }
 </script>
 {% endblock %} 
