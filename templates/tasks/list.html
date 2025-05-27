@@ -39,22 +39,23 @@
 
             <!-- 任务表格 -->
             <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle w-100" style="table-layout: fixed;">
+                <table class="table table-hover align-middle">
                     <thead>
                         <tr>
-                            <th style="width: 18%">任务ID</th>
-                            <th style="width: 18%">文档</th>
+                            <th style="width: 3%"></th>
+                            <th style="width: 17%">任务ID</th>
+                            <th style="width: 17%">文档</th>
                             <th style="width: 15%">算法镜像</th>
                             <th style="width: 15%">数据集</th>
                             <th style="width: 6%" class="text-center">用例数</th>
                             <th style="width: 8%" class="text-center">状态</th>
                             <th style="width: 10%">创建时间</th>
-                            <th style="width: 10%" class="text-center">操作</th>
+                            <th style="width: 9%" class="text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody id="tasksTableBody">
                         <tr>
-                            <td colspan="8" class="text-center py-4">
+                            <td colspan="9" class="text-center py-4">
                                 <div class="spinner-border spinner-border-sm text-secondary" role="status">
                                     <span class="visually-hidden">加载中...</span>
                                 </div>
@@ -418,6 +419,8 @@
         
         // 绑定状态筛选事件
         document.getElementById('statusFilter').addEventListener('change', filterTasks);
+        
+
     });
     
     function loadTasks() {
@@ -440,7 +443,7 @@
         if (tasksToRender.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center py-4">
+                    <td colspan="9" class="text-center py-4">
                         <i class="bi bi-inbox text-muted"></i>
                         <span class="ms-2">暂无任务数据</span>
                     </td>
@@ -485,50 +488,105 @@
             const dateObj = new Date(task.created_at);
             const simpleDate = `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
             
-            tbody.innerHTML += `
-                <tr>
-                    <td class="text-truncate p-2" title="${task.task_id}">${taskIdShort}</td>
-                    <td class="text-truncate p-2" title="${task.document_id || '-'}">${docIdShort}</td>
-                    <td class="text-truncate p-2" title="${task.algorithm_image || '未配置'}">
-                        <small class="text-muted">${shortAlgoImage}</small>
-                    </td>
-                    <td class="text-truncate p-2" title="${task.dataset_url || '未配置'}">
-                        <small class="text-muted">${shortDatasetUrl}</small>
-                    </td>
-                    <td class="text-center p-2">${task.test_cases_count || 0}</td>
-                    <td class="text-center p-2">
-                        <span class="badge bg-${statusClass}">
-                            ${getStatusText(task.status)}
-                        </span>
-                    </td>
-                    <td class="p-2">${simpleDate}</td>
-                    <td class="text-center p-2">
-                        <div class="d-inline-flex gap-1">
-                            <button type="button" class="btn btn-icon btn-sm btn-outline-primary px-2 py-1" 
-                                    onclick="openTaskConfig('${task.task_id}')" title="设置">
-                                <i class="bi bi-gear"></i>
-                            </button>
-                            <a href="/tasks/${task.task_id}" class="btn btn-icon btn-sm btn-outline-info px-2 py-1" title="查看">
-                                <i class="bi bi-eye"></i>
-                            </a>
-                            ${!task.container_name ? 
-                                `<button type="button" class="btn btn-icon btn-sm btn-outline-success px-2 py-1" 
-                                    onclick="startContainer('${task.task_id}')" title="启动容器">
-                                    <i class="bi bi-play-fill"></i>
-                                </button>` : 
-                                `<button type="button" class="btn btn-icon btn-sm btn-outline-secondary px-2 py-1" 
-                                    onclick="stopContainer('${task.task_id}')" title="停止容器">
-                                    <i class="bi bi-stop-fill"></i>
-                                </button>`
-                            }
-                            <button type="button" class="btn btn-icon btn-sm btn-outline-danger px-2 py-1" 
-                                    onclick="deleteTask('${task.task_id}')" title="删除">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
+            // 主任务行
+            const mainRow = document.createElement('tr');
+            mainRow.className = 'task-main-row';
+            mainRow.innerHTML = `
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-outline-secondary expand-btn" 
+                            onclick="toggleTaskDetails('${task.task_id}')" title="展开详情">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </td>
+                <td class="text-truncate" title="${task.task_id}">${taskIdShort}</td>
+                <td class="text-truncate" title="${task.document_id || '-'}">${docIdShort}</td>
+                <td class="text-truncate" title="${task.algorithm_image || '未配置'}">
+                    <small class="text-muted">${shortAlgoImage}</small>
+                </td>
+                <td class="text-truncate" title="${task.dataset_url || '未配置'}">
+                    <small class="text-muted">${shortDatasetUrl}</small>
+                </td>
+                <td class="text-center">${task.test_cases_count || 0}</td>
+                <td class="text-center">
+                    <span class="badge bg-${statusClass}">
+                        ${getStatusText(task.status)}
+                    </span>
+                </td>
+                <td>${simpleDate}</td>
+                <td class="text-center">
+                    <div class="d-inline-flex gap-1">
+                        <button type="button" class="btn btn-icon btn-sm btn-outline-primary px-2 py-1" 
+                                onclick="openTaskConfig('${task.task_id}')" title="设置">
+                            <i class="bi bi-gear"></i>
+                        </button>
+                        <a href="/tasks/${task.task_id}" class="btn btn-icon btn-sm btn-outline-info px-2 py-1" title="查看">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        ${!task.container_name ? 
+                            `<button type="button" class="btn btn-icon btn-sm btn-outline-success px-2 py-1" 
+                                onclick="startContainer('${task.task_id}')" title="启动容器">
+                                <i class="bi bi-play-fill"></i>
+                            </button>` : 
+                            `<button type="button" class="btn btn-icon btn-sm btn-outline-secondary px-2 py-1" 
+                                onclick="stopContainer('${task.task_id}')" title="停止容器">
+                                <i class="bi bi-stop-fill"></i>
+                            </button>`
+                        }
+                        <button type="button" class="btn btn-icon btn-sm btn-outline-danger px-2 py-1" 
+                                onclick="deleteTask('${task.task_id}')" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
             `;
+            tbody.appendChild(mainRow);
+            
+            // 详情行（默认隐藏）
+            const detailRow = document.createElement('tr');
+            detailRow.className = 'task-detail-row';
+            detailRow.id = `task-details-${task.task_id}`;
+            detailRow.style.display = 'none';
+            detailRow.innerHTML = `
+                <td colspan="9" class="p-0">
+                    <div class="task-details-container bg-light border-top">
+                        <div class="row g-0">
+                            <!-- 文档信息 -->
+                            <div class="col-md-6">
+                                <div class="p-3 border-end">
+                                    <h6 class="mb-3">
+                                        <i class="bi bi-file-earmark-text me-2"></i>关联文档
+                                    </h6>
+                                    <div id="task-document-${task.task_id}">
+                                        <div class="text-center py-3">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <span class="ms-2">加载中...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 测试用例信息 -->
+                            <div class="col-md-6">
+                                <div class="p-3">
+                                    <h6 class="mb-3">
+                                        <i class="bi bi-list-check me-2"></i>测试用例
+                                        <button type="button" class="btn btn-sm btn-outline-info float-end" 
+                                                onclick="refreshTaskTestCases('${task.task_id}')">
+                                            <i class="bi bi-arrow-clockwise"></i>
+                                        </button>
+                                    </h6>
+                                    <div id="task-testcases-${task.task_id}">
+                                        <div class="text-center py-3">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <span class="ms-2">加载中...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(detailRow);
         });
     }
     
@@ -934,6 +992,236 @@
             alertDiv.classList.remove('show');
             setTimeout(() => alertDiv.remove(), 300);
         }, 3000);
+    }
+    
+    // 展开/收起任务详情
+    function toggleTaskDetails(taskId) {
+        const detailRow = document.getElementById(`task-details-${taskId}`);
+        const expandBtn = document.querySelector(`[onclick="toggleTaskDetails('${taskId}')"] i`);
+        
+        if (detailRow.style.display === 'none') {
+            // 展开
+            detailRow.style.display = 'table-row';
+            expandBtn.className = 'bi bi-chevron-down';
+            
+            // 加载详情数据
+            loadTaskDocument(taskId);
+            loadTaskTestCases(taskId);
+        } else {
+            // 收起
+            detailRow.style.display = 'none';
+            expandBtn.className = 'bi bi-chevron-right';
+        }
+    }
+    
+    // 加载任务关联的文档信息
+    function loadTaskDocument(taskId) {
+        const container = document.getElementById(`task-document-${taskId}`);
+        
+        // 找到对应的任务
+        const task = tasks.find(t => t.task_id === taskId);
+        if (!task || !task.document_id) {
+            container.innerHTML = `
+                <div class="text-center py-3 text-muted">
+                    <i class="bi bi-file-earmark-x"></i>
+                    <div class="mt-2">未关联文档</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // 获取文档详情
+        fetch(`/api/documents/${task.document_id}`)
+            .then(response => response.json())
+            .then(data => {
+                container.innerHTML = `
+                    <div class="document-info">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <strong>${data.filename || '未知文件'}</strong>
+                                <div class="text-muted small">ID: ${data.document_id.substring(0, 12)}...</div>
+                            </div>
+                            <span class="badge ${data.status === 'analyzed' ? 'bg-success' : 'bg-secondary'}">
+                                ${data.status === 'analyzed' ? '已分析' : '已上传'}
+                            </span>
+                        </div>
+                        <div class="small text-muted mb-2">
+                            上传时间: ${formatDate(data.created_at)}
+                        </div>
+                        <div class="btn-group btn-group-sm w-100">
+                            <button type="button" class="btn btn-outline-info" onclick="analyzeDocument('${data.document_id}')">
+                                <i class="bi bi-search me-1"></i>重新分析
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" onclick="deleteDocument('${data.document_id}')">
+                                <i class="bi bi-trash me-1"></i>删除
+                            </button>
+                        </div>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                console.error('获取文档信息失败:', error);
+                container.innerHTML = `
+                    <div class="text-center py-3 text-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <div class="mt-2">加载文档信息失败</div>
+                    </div>
+                `;
+            });
+    }
+    
+    // 加载任务的测试用例
+    function loadTaskTestCases(taskId) {
+        const container = document.getElementById(`task-testcases-${taskId}`);
+        
+        fetch(`/api/testcases?task_id=${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                const testCases = data.test_cases || [];
+                
+                if (testCases.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-3 text-muted">
+                            <i class="bi bi-list-check"></i>
+                            <div class="mt-2">暂无测试用例</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '<div class="test-cases-list">';
+                testCases.slice(0, 5).forEach(testCase => { // 只显示前5个
+                    const statusClass = getStatusBadgeClass(testCase.status);
+                    html += `
+                        <div class="test-case-item d-flex justify-content-between align-items-center py-2 border-bottom">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold small">${testCase.name || '未命名'}</div>
+                                <div class="text-muted small text-truncate" style="max-width: 200px;">
+                                    ${testCase.purpose || '无描述'}
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge ${statusClass} small">
+                                    ${getStatusText(testCase.status)}
+                                </span>
+                                <button type="button" class="btn btn-sm btn-outline-success" 
+                                        onclick="executeTestCase('${testCase.id}')" title="执行">
+                                    <i class="bi bi-play"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                if (testCases.length > 5) {
+                    html += `
+                        <div class="text-center py-2">
+                            <small class="text-muted">还有 ${testCases.length - 5} 个测试用例...</small>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+                container.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('获取测试用例失败:', error);
+                container.innerHTML = `
+                    <div class="text-center py-3 text-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <div class="mt-2">加载测试用例失败</div>
+                    </div>
+                `;
+            });
+    }
+    
+    // 刷新任务的测试用例
+    function refreshTaskTestCases(taskId) {
+        const container = document.getElementById(`task-testcases-${taskId}`);
+        container.innerHTML = `
+            <div class="text-center py-3">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="ms-2">刷新中...</span>
+            </div>
+        `;
+        loadTaskTestCases(taskId);
+    }
+    
+    // 获取状态徽章样式类
+    function getStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'bg-secondary',
+            'preparing': 'bg-info',
+            'executing': 'bg-primary',
+            'completed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+    
+    // 文档管理相关函数
+    
+    function analyzeDocument(documentId) {
+        showNotification('info', '正在分析文档，请稍候...');
+        
+        fetch(`/api/documents/${documentId}/analyze`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            showNotification('success', `文档分析完成，生成了 ${data.test_cases.length} 个测试用例`);
+            loadDocuments(); // 刷新文档列表
+        })
+        .catch(error => {
+            console.error('分析文档失败:', error);
+            showNotification('danger', `分析文档失败: ${error.message}`);
+        });
+    }
+    
+    function deleteDocument(documentId) {
+        if (!confirm('确定要删除这个文档吗？此操作不可恢复。')) return;
+        
+        fetch(`/api/documents/${documentId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            showNotification('success', '文档已删除');
+            loadDocuments(); // 刷新文档列表
+        })
+        .catch(error => {
+            console.error('删除文档失败:', error);
+            showNotification('danger', `删除文档失败: ${error.message}`);
+        });
+    }
+    
+    // 测试用例管理相关函数
+    function viewTestCase(caseId) {
+        window.open(`/testcases/${caseId}`, '_blank');
+    }
+    
+    function executeTestCase(caseId) {
+        showNotification('info', '正在执行测试用例...');
+        
+        fetch(`/api/testcases/${caseId}/execute`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('success', '测试用例执行完成');
+            } else {
+                showNotification('warning', `测试用例执行完成，但有错误: ${data.error || '未知错误'}`);
+            }
+            const selectedTask = document.getElementById('taskSelector').value;
+            if (selectedTask) {
+                loadTestCasesForTask(selectedTask);
+            }
+        })
+        .catch(error => {
+            console.error('执行测试用例失败:', error);
+            showNotification('danger', `执行测试用例失败: ${error.message}`);
+        });
     }
 </script>
 {% endblock %} 

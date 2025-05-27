@@ -1143,6 +1143,208 @@ async def create_task(
         raise HTTPException(status_code=500, detail=f"创建任务异常: {str(e)}")
 
 
+# 获取所有文档列表接口
+@router.get("/documents", response_model=Dict[str, Any])
+async def get_documents_list(
+    db: Session = Depends(get_db)
+):
+    """
+    获取所有文档列表
+    
+    返回所有文档的列表信息
+    """
+    log.info("获取文档列表")
+    
+    try:
+        # 获取所有有文档ID的任务
+        tasks = db.query(DBTestTask).filter(DBTestTask.document_id.isnot(None)).all()
+        
+        documents = []
+        pdf_dir = "data/pdfs"
+        
+        for task in tasks:
+            document_id = task.document_id
+            if not document_id:
+                continue
+                
+            # 检查文档文件是否存在
+            matching_files = [f for f in os.listdir(pdf_dir) if f.startswith(document_id)]
+            if not matching_files:
+                continue
+                
+            # 获取文档基本信息
+            doc_info = DOCUMENTS.get(document_id, {})
+            filename = doc_info.get("filename", matching_files[0])
+            file_path = doc_info.get("file_path", os.path.join(pdf_dir, matching_files[0]))
+            
+            # 获取文件创建时间
+            try:
+                file_stat = os.stat(file_path)
+                created_at = datetime.fromtimestamp(file_stat.st_ctime)
+            except:
+                created_at = task.created_at or datetime.now()
+            
+            # 获取测试用例数量
+            test_cases_count = db.query(DBTestCase).filter(DBTestCase.document_id == document_id).count()
+            
+            documents.append({
+                "document_id": document_id,
+                "filename": filename,
+                "file_path": file_path,
+                "created_at": created_at.isoformat(),
+                "test_cases_count": test_cases_count,
+                "status": "analyzed" if test_cases_count > 0 else "uploaded",
+                "task_id": task.task_id,
+                "task_status": task.status
+            })
+        
+        return {
+            "documents": documents,
+            "total": len(documents)
+        }
+        
+    except Exception as e:
+        log.error(f"获取文档列表异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文档列表异常: {str(e)}")
+
+# 获取文档详情接口
+@router.get("/documents/{document_id}", response_model=Dict[str, Any])
+async def get_document_detail(
+    document_id: str = Path(..., description="文档ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    获取文档详情
+    
+    - **document_id**: 文档ID
+    
+    返回文档的详细信息
+    """
+    # 检查文档是否存在
+    pdf_dir = "data/pdfs"
+    matching_files = [f for f in os.listdir(pdf_dir) if f.startswith(document_id)]
+    
+    if not matching_files:
+        raise HTTPException(status_code=404, detail=f"文档不存在: {document_id}")
+    
+    log.info(f"获取文档详情: 文档ID={document_id}")
+    
+    try:
+        # 获取文档基本信息
+        doc_info = DOCUMENTS.get(document_id, {})
+        filename = doc_info.get("filename", matching_files[0])
+        file_path = doc_info.get("file_path", os.path.join(pdf_dir, matching_files[0]))
+        
+        # 获取文件创建时间
+        file_stat = os.stat(file_path)
+        created_at = datetime.fromtimestamp(file_stat.st_ctime)
+        
+        # 查找与文档关联的任务
+        task = None
+        task_id = None
+        
+        if doc_info and 'task_id' in doc_info:
+            # 如果文档信息中有任务ID，获取该任务
+            task_id = doc_info['task_id']
+            task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+        
+        if not task:
+            # 如果没有找到直接关联的任务，尝试通过测试用例找到关联的任务
+            test_cases = db.query(DBTestCase).filter(DBTestCase.document_id == document_id).all()
+            if test_cases:
+                # 获取第一个测试用例的任务ID
+                task_id = test_cases[0].task_id
+                task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+        
+        # 获取测试用例数量
+        test_cases_count = db.query(DBTestCase).filter(DBTestCase.document_id == document_id).count()
+        
+        # 构建返回数据
+        result = {
+            "document_id": document_id,
+            "filename": filename,
+            "file_path": file_path,
+            "created_at": created_at.isoformat(),
+            "test_cases_count": test_cases_count,
+            "status": "analyzed" if test_cases_count > 0 else "uploaded"
+        }
+        
+        # 如果找到关联的任务，添加任务信息
+        if task:
+            result.update({
+                "task_id": task.task_id,
+                "algorithm_image": task.algorithm_image,
+                "dataset_url": task.dataset_url,
+                "task_status": task.status,
+                "task_created_at": task.created_at.isoformat() if task.created_at else None,
+                "task_updated_at": task.updated_at.isoformat() if task.updated_at else None
+            })
+        
+        return result
+        
+    except Exception as e:
+        log.error(f"获取文档详情异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文档详情异常: {str(e)}")
+
+# 删除文档接口
+@router.delete("/documents/{document_id}", response_model=MessageResponse)
+async def delete_document(
+    document_id: str = Path(..., description="文档ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    删除文档及其相关数据
+    
+    - **document_id**: 文档ID
+    
+    删除文档文件、相关测试用例和任务数据
+    """
+    log.info(f"删除文档: 文档ID={document_id}")
+    
+    try:
+        # 检查文档是否存在
+        pdf_dir = "data/pdfs"
+        matching_files = [f for f in os.listdir(pdf_dir) if f.startswith(document_id)]
+        
+        if not matching_files:
+            raise HTTPException(status_code=404, detail=f"文档不存在: {document_id}")
+        
+        # 删除相关的测试用例
+        test_cases = db.query(DBTestCase).filter(DBTestCase.document_id == document_id).all()
+        for test_case in test_cases:
+            db.delete(test_case)
+        
+        # 查找并删除相关的任务
+        tasks = db.query(DBTestTask).filter(DBTestTask.document_id == document_id).all()
+        for task in tasks:
+            db.delete(task)
+        
+        # 删除文档文件
+        for filename in matching_files:
+            file_path = os.path.join(pdf_dir, filename)
+            try:
+                os.remove(file_path)
+                log.info(f"已删除文档文件: {file_path}")
+            except Exception as e:
+                log.warning(f"删除文档文件失败: {file_path}, 错误: {str(e)}")
+        
+        # 从内存中删除文档信息
+        if document_id in DOCUMENTS:
+            del DOCUMENTS[document_id]
+        
+        # 提交数据库更改
+        db.commit()
+        
+        log.success(f"文档删除成功: {document_id}")
+        return {"message": f"文档 {document_id} 及其相关数据已成功删除"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error(f"删除文档异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除文档异常: {str(e)}")
+
 # 添加文档任务信息查询接口
 @router.get("/documents/{document_id}/task-info", response_model=Dict[str, Any])
 async def get_document_task_info(

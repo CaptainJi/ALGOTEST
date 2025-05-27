@@ -449,4 +449,129 @@ main {
 
 .doc-card:hover::before {
     transform: scale(20);
+}
+
+/* 标签页样式 */
+.nav-tabs {
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 1.5rem;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-radius: 8px 8px 0 0;
+    padding: 0.8rem 1.5rem;
+    font-weight: 500;
+    color: #6c757d;
+    background: transparent;
+    transition: all var(--animation-timing);
+    margin-right: 0.5rem;
+    position: relative;
+}
+
+.nav-tabs .nav-link:hover {
+    background-color: rgba(75, 108, 183, 0.1);
+    color: #4b6cb7;
+    border-color: transparent;
+}
+
+.nav-tabs .nav-link.active {
+    background: var(--primary-gradient);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 10px rgba(75, 108, 183, 0.3);
+}
+
+.nav-tabs .nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-gradient);
+}
+
+.tab-content {
+    animation: fadeIn 0.3s ease forwards;
+}
+
+.tab-pane {
+    min-height: 400px;
+}
+
+/* 任务详情展开样式 */
+.task-main-row {
+    cursor: pointer;
+    transition: background-color var(--animation-timing);
+}
+
+.task-main-row:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.task-detail-row {
+    background-color: #f8f9fa;
+}
+
+.task-details-container {
+    border-radius: 0 0 8px 8px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.expand-btn {
+    border: none !important;
+    background: transparent !important;
+    color: #6c757d !important;
+    transition: all var(--animation-timing);
+}
+
+.expand-btn:hover {
+    color: #4b6cb7 !important;
+    transform: scale(1.1);
+}
+
+.expand-btn i {
+    transition: transform var(--animation-timing);
+}
+
+.document-info {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.test-cases-list {
+    background: white;
+    border-radius: 8px;
+    padding: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.test-case-item {
+    transition: background-color var(--animation-timing);
+    border-radius: 4px;
+    padding: 0.5rem !important;
+}
+
+.test-case-item:hover {
+    background-color: rgba(75, 108, 183, 0.05);
+}
+
+.test-case-item:last-child {
+    border-bottom: none !important;
 } 
