@@ -66,22 +66,19 @@
         </div>
     </div>
 
-    <!-- 测试用例列表 -->
+    <!-- 测试用例管理 -->
     <div class="row">
         <div class="col-md-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-list-check me-2"></i>测试用例列表</span>
-                    <div id="testCasesActions">
-                        <!-- 动态加载按钮 -->
-                    </div>
+                <div class="card-header">
+                    <span><i class="bi bi-list-check me-2"></i>测试用例管理</span>
                 </div>
-                <div class="card-body p-0" id="testCasesContainer">
+                <div class="card-body" id="testCasesContainer">
                     <div class="text-center py-4">
                         <div class="spinner-border" role="status">
                             <span class="visually-hidden">加载中...</span>
                         </div>
-                        <p class="mt-2">加载测试用例...</p>
+                        <p class="mt-2">加载测试用例信息...</p>
                     </div>
                 </div>
             </div>
@@ -132,6 +129,62 @@
                 </button>
                 <button type="button" class="btn btn-primary" onclick="saveTestDataConfig()">
                     <i class="bi bi-save me-1"></i>保存配置
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量配置测试数据模态框 -->
+<div class="modal fade" id="batchTestDataConfigModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-gear-wide-connected me-2"></i>批量配置测试数据
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    为未配置测试数据的用例批量设置测试数据路径。支持使用占位符：
+                    <ul class="mb-0 mt-2">
+                        <li><code>{case_id}</code> - 测试用例ID</li>
+                        <li><code>{case_name}</code> - 测试用例名称</li>
+                        <li><code>{index}</code> - 序号（从1开始）</li>
+                    </ul>
+                </div>
+                
+                <form id="batchTestDataConfigForm">
+                    <div class="mb-3">
+                        <label for="batchTestDataPattern" class="form-label">测试数据路径模式 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="batchTestDataPattern" 
+                               placeholder="例如：images/test_{index}.jpg 或 data/{case_name}.png" required>
+                        <div class="form-text">
+                            相对于数据集根目录的路径模式
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">数据集根目录</label>
+                        <input type="text" class="form-control" id="batchDatasetRootPath" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">预览效果</label>
+                        <div id="batchPreviewContainer" class="border rounded p-3 bg-light">
+                            <div class="text-muted">输入路径模式后将显示预览效果</div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveBatchTestDataConfig()">
+                    <i class="bi bi-save me-1"></i>批量保存
                 </button>
             </div>
         </div>
@@ -479,31 +532,108 @@
                 </div>
             `;
         } else {
-            // 未执行
-            container.innerHTML = `
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-circle me-2"></i>
-                    任务尚未执行，请先配置测试环境并执行测试
-                </div>
-                <div class="text-center mt-4">
-                    <div class="d-flex justify-content-center">
+            // 检查配置是否完整
+            const hasAlgorithmImage = task.algorithm_image && task.algorithm_image.trim() !== '';
+            const hasDatasetUrl = task.dataset_url && task.dataset_url.trim() !== '';
+            const hasTestCases = task.test_cases_count > 0;
+            const hasContainer = task.container_name && task.container_name.trim() !== '';
+            
+            if (hasAlgorithmImage && hasDatasetUrl && hasTestCases && hasContainer) {
+                // 配置完整，可以执行测试
+                container.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle me-2"></i>
+                        任务配置完整，可以开始执行测试
+                    </div>
+                    <div class="row text-center mb-3">
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-check-circle text-success fs-4"></i>
+                                <div class="small text-muted mt-1">算法镜像</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-check-circle text-success fs-4"></i>
+                                <div class="small text-muted mt-1">数据集</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-check-circle text-success fs-4"></i>
+                                <div class="small text-muted mt-1">测试用例</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-check-circle text-success fs-4"></i>
+                                <div class="small text-muted mt-1">容器环境</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <button id="startTestBtn" class="btn btn-success btn-lg">
+                            <i class="bi bi-play-fill me-2"></i> 开始执行测试
+                        </button>
+                    </div>
+                `;
+                
+                // 绑定开始测试按钮点击事件
+                setTimeout(() => {
+                    const startTestBtn = document.getElementById('startTestBtn');
+                    if (startTestBtn) {
+                        startTestBtn.addEventListener('click', () => executeTask(task.task_id));
+                    }
+                }, 0);
+            } else {
+                // 配置不完整，显示缺失项
+                let missingItems = [];
+                if (!hasAlgorithmImage) missingItems.push('算法镜像');
+                if (!hasDatasetUrl) missingItems.push('数据集路径');
+                if (!hasTestCases) missingItems.push('测试用例');
+                if (!hasContainer) missingItems.push('Docker容器');
+                
+                container.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        任务配置不完整，请先完成以下配置：${missingItems.join('、')}
+                    </div>
+                    <div class="row text-center mb-3">
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-${hasAlgorithmImage ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
+                                <div class="small text-muted mt-1">算法镜像</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-${hasDatasetUrl ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
+                                <div class="small text-muted mt-1">数据集</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-${hasTestCases ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
+                                <div class="small text-muted mt-1">测试用例</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
+                            <div class="py-2">
+                                <i class="bi bi-${hasContainer ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
+                                <div class="small text-muted mt-1">容器环境</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center">
                         <a href="/tasks/${task.task_id}/configure" class="btn btn-outline-primary me-2">
-                            <i class="bi bi-gear me-1"></i> 配置环境
+                            <i class="bi bi-gear me-1"></i> 完善配置
                         </a>
-                        <button id="startTestBtn" class="btn btn-success" ${!task.algorithm_image || !task.dataset_url ? 'disabled' : ''}>
+                        <button id="startTestBtn" class="btn btn-success" disabled>
                             <i class="bi bi-play-fill me-1"></i> 开始测试
                         </button>
                     </div>
-                </div>
-            `;
-            
-            // 绑定开始测试按钮点击事件
-            setTimeout(() => {
-                const startTestBtn = document.getElementById('startTestBtn');
-                if (startTestBtn && !(!task.algorithm_image || !task.dataset_url)) {
-                    startTestBtn.addEventListener('click', () => executeTask(task.task_id));
-                }
-            }, 0);
+                `;
+            }
         }
     }
 
@@ -514,7 +644,7 @@
         if (!queryParam) {
             const container = document.getElementById('testCasesContainer');
             container.innerHTML = `
-                <div class="alert alert-info m-3">
+                <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i> 
                     该任务未关联文档，无法获取测试用例
                 </div>
@@ -527,8 +657,7 @@
             .then(response => response.json())
             .then(data => {
                 testCases = data.test_cases || [];
-                updateTestCasesView(testCases);
-                updateTestCasesActions(testCases);
+                updateTestCasesOverview(testCases);
             })
             .catch(error => {
                 console.error('获取测试用例失败:', error);
@@ -536,104 +665,98 @@
             });
     }
 
-    function updateTestCasesView(cases) {
+    function updateTestCasesOverview(cases) {
         const container = document.getElementById('testCasesContainer');
         
         if (cases.length === 0) {
             container.innerHTML = `
-                <div class="alert alert-info m-3">
+                <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i> 
                     暂无测试用例，请先生成或创建测试用例
+                </div>
+                <div class="text-center">
+                    <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-primary">
+                        <i class="bi bi-plus-lg me-1"></i> 创建测试用例
+                    </a>
                 </div>
             `;
             return;
         }
         
+        // 统计测试用例状态
+        const configuredCount = cases.filter(tc => tc.test_data).length;
+        const unconfiguredCount = cases.length - configuredCount;
+        const statusCounts = {
+            pending: cases.filter(tc => tc.status === 'pending').length,
+            executing: cases.filter(tc => tc.status === 'executing').length,
+            passed: cases.filter(tc => tc.status === 'passed').length,
+            failed: cases.filter(tc => tc.status === 'failed').length
+        };
+        
         container.innerHTML = `
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th style="width: 12%">ID</th>
-                            <th style="width: 20%">名称</th>
-                            <th style="width: 25%">测试目的</th>
-                            <th style="width: 20%">测试数据</th>
-                            <th style="width: 10%">状态</th>
-                            <th style="width: 13%">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${cases.map(testCase => `
-                            <tr>
-                                <td>
-                                    <span class="badge bg-light text-dark">${testCase.id ? testCase.id.substring(0, 8) : '未知ID'}</span>
-                                </td>
-                                <td>${testCase.name}</td>
-                                <td>${truncateText(testCase.purpose, 40)}</td>
-                                <td>
-                                    <div class="test-data-cell">
-                                        ${testCase.test_data ? 
-                                            `<span class="badge bg-success small" title="${testCase.test_data}">
-                                                <i class="bi bi-check-circle me-1"></i>已配置
-                                            </span>` :
-                                            `<button class="btn btn-outline-warning btn-sm" onclick="configTestData('${testCase.id}', '${testCase.name}')">
-                                                <i class="bi bi-gear-fill"></i> 配置
-                                            </button>`
-                                        }
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="badge ${getCaseStatusBadge(testCase.status)}">
-                                        ${getCaseStatusText(testCase.status)}
-                                    </span>
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm">
-                                        <a href="/testcases/${testCase.id}" class="btn btn-outline-primary" title="查看详情">
-                                            <i class="bi bi-eye"></i>
-                                        </a>
-                                        <button class="btn btn-outline-success" 
-                                            onclick="executeSingleTest('${testCase.id}')"
-                                            ${taskData && taskData.status === 'executing' || !testCase.test_data ? 'disabled' : ''}
-                                            title="${!testCase.test_data ? '请先配置测试数据' : '执行测试'}">
-                                            <i class="bi bi-play-fill"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card text-center py-3">
+                        <div class="card-icon mb-2">
+                            <i class="bi bi-list-check fs-3"></i>
+                        </div>
+                        <h5 class="card-value mb-1">${cases.length}</h5>
+                        <div class="card-title">总用例数</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card text-center py-3">
+                        <div class="card-icon mb-2" style="color: #43cea2;">
+                            <i class="bi bi-check-circle fs-3"></i>
+                        </div>
+                        <h5 class="card-value mb-1" style="color: #43cea2;">${configuredCount}</h5>
+                        <div class="card-title">已配置数据</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card text-center py-3">
+                        <div class="card-icon mb-2" style="color: #f39c12;">
+                            <i class="bi bi-exclamation-circle fs-3"></i>
+                        </div>
+                        <h5 class="card-value mb-1" style="color: #f39c12;">${unconfiguredCount}</h5>
+                        <div class="card-title">待配置数据</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card text-center py-3">
+                        <div class="card-icon mb-2" style="color: #4b6cb7;">
+                            <i class="bi bi-play-circle fs-3"></i>
+                        </div>
+                        <h5 class="card-value mb-1" style="color: #4b6cb7;">${statusCounts.passed}</h5>
+                        <div class="card-title">已通过</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center">
+                <div class="btn-group">
+                    <a href="/testcases?task_id=${taskId}" class="btn btn-primary">
+                        <i class="bi bi-list-ul me-1"></i> 管理测试用例
+                    </a>
+                    <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-outline-success">
+                        <i class="bi bi-plus-lg me-1"></i> 添加用例
+                    </a>
+                    ${unconfiguredCount > 0 ? `
+                        <button onclick="batchConfigTestData()" class="btn btn-outline-warning">
+                            <i class="bi bi-gear-wide-connected me-1"></i> 批量配置数据
+                        </button>
+                    ` : ''}
+                    ${taskData.dataset_url ? `
+                        <button onclick="selectImages('${taskId}')" class="btn btn-outline-info">
+                            <i class="bi bi-magic me-1"></i> 智能分配数据
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         `;
     }
 
-    function updateTestCasesActions(cases) {
-        const container = document.getElementById('testCasesActions');
-        
-        if (cases.length === 0) {
-            container.innerHTML = `
-                <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-plus-lg me-1"></i> 创建测试用例
-                </a>
-            `;
-            return;
-        }
-        
-        container.innerHTML = `
-            <div class="btn-group btn-group-sm">
-                <a href="/testcases?document_id=${taskData.document_id}" class="btn btn-outline-primary">
-                    <i class="bi bi-list-ul me-1"></i> 查看全部
-                </a>
-                <a href="/testcases/create?document_id=${taskData.document_id}" class="btn btn-outline-success">
-                    <i class="bi bi-plus-lg me-1"></i> 添加用例
-                </a>
-                <button onclick="selectImages('${taskId}')" class="btn btn-outline-info" ${!taskData.dataset_url ? 'disabled' : ''}>
-                    <i class="bi bi-magic me-1"></i> 智能分配测试数据
-                </button>
-            </div>
-        `;
-    }
+
 
     function updateActionButtons(task) {
         const configBtn = document.getElementById('configBtn');
@@ -657,55 +780,7 @@
         }
     }
 
-    function executeSingleTest(caseId) {
-        console.log(`执行单个测试: ${caseId}`);
-        
-        if (!confirm('确定要执行此测试用例吗？')) {
-            return;
-        }
-        
-        // 更新UI状态
-        const btn = document.querySelector(`button[onclick="executeSingleTest('${caseId}')"]`);
-        if (btn) {
-            btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-            btn.disabled = true;
-        }
-        
-        // 发送API请求执行单个测试用例
-        fetch(`/api/testcases/${caseId}/execute`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('测试用例执行已启动:', data);
-            
-            // 提示用户执行已开始
-            showNotification('success', `测试用例 ${caseId ? caseId.substring(0, 8) : '未知ID'} 执行已开始`);
-            
-            // 定时刷新页面，获取最新状态
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
-        })
-        .catch(error => {
-            console.error('执行测试用例失败:', error);
-            showNotification('danger', `执行测试用例失败: ${error.message}`);
-            
-            // 恢复按钮状态
-            if (btn) {
-                btn.innerHTML = '<i class="bi bi-play-fill"></i>';
-                btn.disabled = false;
-            }
-        });
-    }
+
 
     function executeTask(taskId) {
         console.log(`执行任务: ${taskId}`);
@@ -1156,8 +1231,141 @@
         .finally(() => {
             // 恢复按钮状态
             saveBtn.innerHTML = originalText;
-            saveBtn.disabled = false;
-        });
-    }
+                         saveBtn.disabled = false;
+         });
+     }
+     
+     // 批量配置测试数据相关函数
+     function batchConfigTestData() {
+         // 获取未配置测试数据的用例
+         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+         
+         if (unconfiguredCases.length === 0) {
+             showNotification('info', '所有测试用例都已配置测试数据');
+             return;
+         }
+         
+         // 填充模态框数据
+         document.getElementById('batchDatasetRootPath').value = taskData.dataset_url || '未配置';
+         document.getElementById('batchTestDataPattern').value = '';
+         document.getElementById('batchPreviewContainer').innerHTML = '<div class="text-muted">输入路径模式后将显示预览效果</div>';
+         
+         // 绑定输入事件以实时预览
+         const patternInput = document.getElementById('batchTestDataPattern');
+         patternInput.oninput = updateBatchPreview;
+         
+         // 显示模态框
+         const modal = new bootstrap.Modal(document.getElementById('batchTestDataConfigModal'));
+         modal.show();
+     }
+     
+     function updateBatchPreview() {
+         const pattern = document.getElementById('batchTestDataPattern').value.trim();
+         const previewContainer = document.getElementById('batchPreviewContainer');
+         
+         if (!pattern) {
+             previewContainer.innerHTML = '<div class="text-muted">输入路径模式后将显示预览效果</div>';
+             return;
+         }
+         
+         // 获取未配置测试数据的用例
+         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+         
+         if (unconfiguredCases.length === 0) {
+             previewContainer.innerHTML = '<div class="text-muted">没有需要配置的测试用例</div>';
+             return;
+         }
+         
+         // 生成预览
+         let previewHtml = '<div class="small"><strong>预览效果（前5个）：</strong></div>';
+         previewHtml += '<ul class="list-unstyled mt-2 mb-0">';
+         
+         unconfiguredCases.slice(0, 5).forEach((testCase, index) => {
+             const generatedPath = generateTestDataPath(pattern, testCase, index + 1);
+             previewHtml += `
+                 <li class="mb-1">
+                     <span class="badge bg-light text-dark me-2">${testCase.id ? testCase.id.substring(0, 8) : '未知ID'}</span>
+                     <code>${generatedPath}</code>
+                 </li>
+             `;
+         });
+         
+         if (unconfiguredCases.length > 5) {
+             previewHtml += `<li class="text-muted">... 还有 ${unconfiguredCases.length - 5} 个用例</li>`;
+         }
+         
+         previewHtml += '</ul>';
+         previewContainer.innerHTML = previewHtml;
+     }
+     
+     function generateTestDataPath(pattern, testCase, index) {
+         return pattern
+             .replace(/\{case_id\}/g, testCase.id || 'unknown')
+             .replace(/\{case_name\}/g, testCase.name || 'unnamed')
+             .replace(/\{index\}/g, index.toString());
+     }
+     
+     function saveBatchTestDataConfig() {
+         const pattern = document.getElementById('batchTestDataPattern').value.trim();
+         
+         if (!pattern) {
+             showNotification('warning', '请输入测试数据路径模式');
+             return;
+         }
+         
+         // 获取未配置测试数据的用例
+         const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+         
+         if (unconfiguredCases.length === 0) {
+             showNotification('info', '没有需要配置的测试用例');
+             return;
+         }
+         
+         // 生成批量更新数据
+         const updates = unconfiguredCases.map((testCase, index) => ({
+             case_id: testCase.id,
+             test_data: generateTestDataPath(pattern, testCase, index + 1)
+         }));
+         
+         // 显示加载状态
+         const saveBtn = document.querySelector('#batchTestDataConfigModal .btn-primary');
+         const originalText = saveBtn.innerHTML;
+         saveBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>保存中...';
+         saveBtn.disabled = true;
+         
+         // 发送API请求批量更新测试数据
+         fetch(`/api/tasks/${taskId}/test-data`, {
+             method: 'PUT',
+             headers: {
+                 'Content-Type': 'application/json'
+             },
+             body: JSON.stringify({ updates })
+         })
+         .then(response => response.json())
+         .then(data => {
+             if (data.message) {
+                 // 关闭模态框
+                 const modal = bootstrap.Modal.getInstance(document.getElementById('batchTestDataConfigModal'));
+                 modal.hide();
+                 
+                 // 显示成功消息
+                 showNotification('success', `成功为 ${updates.length} 个测试用例配置测试数据`);
+                 
+                 // 刷新测试用例列表
+                 loadTestCases(taskData.document_id);
+             } else {
+                 throw new Error(data.error || '批量保存失败');
+             }
+         })
+         .catch(error => {
+             console.error('批量保存测试数据配置失败:', error);
+             showNotification('danger', `批量保存测试数据配置失败: ${error.message}`);
+         })
+         .finally(() => {
+             // 恢复按钮状态
+             saveBtn.innerHTML = originalText;
+             saveBtn.disabled = false;
+         });
+     }
 </script>
 {% endblock %} 
