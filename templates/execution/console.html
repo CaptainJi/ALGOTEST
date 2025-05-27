@@ -405,7 +405,10 @@
                 document.getElementById('resultStatus').innerHTML = `<span class="badge bg-${statusClass}">${statusText}</span>`;
                 
                 document.getElementById('resultAnalysis').innerHTML = data.result_analysis || '<span class="text-muted">暂无分析结果</span>';
-                document.getElementById('resultLog').textContent = data.execution_log || '暂无执行日志';
+                
+                // 格式化并显示执行日志
+                const logText = data.execution_log || '暂无执行日志';
+                document.getElementById('resultLog').innerHTML = formatLogText(logText);
                 
                 // 显示模态框
                 resultModal.show();
@@ -579,6 +582,54 @@
         return `${minutes}分${remainingSeconds}秒`;
     }
     
+    function formatLogText(logText) {
+        if (!logText || logText === '暂无执行日志') {
+            return '<span class="text-muted">暂无执行日志</span>';
+        }
+        
+        // 首先处理转义字符，将字符串中的转义序列转换为实际字符
+        let processedText = logText;
+        
+        // 处理转义字符 - 更加严格的匹配
+        // 首先尝试解析JSON字符串中的转义字符
+        try {
+            // 如果整个文本看起来像JSON字符串，尝试解析
+            if (processedText.startsWith('"') && processedText.endsWith('"')) {
+                processedText = JSON.parse(processedText);
+            }
+        } catch (e) {
+            // 如果不是有效的JSON，继续手动处理
+        }
+        
+        // 手动处理常见的转义序列
+        processedText = processedText.replace(/\\n/g, '\n');  // 换行符
+        processedText = processedText.replace(/\\t/g, '\t');  // 制表符
+        processedText = processedText.replace(/\\r/g, '\r');  // 回车符
+        processedText = processedText.replace(/\\"/g, '"');   // 双引号
+        processedText = processedText.replace(/\\'/g, "'");   // 单引号
+        
+        // 过滤掉多余的反斜杠
+        processedText = processedText.replace(/\\/g, '');
+        
+        // 按行分割日志
+        const lines = processedText.split('\n');
+        const formattedLines = lines.map(line => {
+            // HTML转义，防止XSS攻击
+            line = line.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;')
+                      .replace(/'/g, '&#39;');
+            
+            // 处理制表符，转换为4个空格
+            line = line.replace(/\t/g, '    ');
+            
+            return line;
+        });
+        
+        return formattedLines.join('<br>');
+    }
+
     function showNotification(type, message) {
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;

@@ -509,6 +509,49 @@
         }
     }
     
+    // 格式化日志消息，处理转义字符
+    function formatLogMessage(message) {
+        if (!message) return '';
+        
+        // 处理转义字符 - 更加严格的匹配
+        let processedMessage = message;
+        
+        // 首先尝试解析JSON字符串中的转义字符
+        try {
+            // 如果整个文本看起来像JSON字符串，尝试解析
+            if (processedMessage.startsWith('"') && processedMessage.endsWith('"')) {
+                processedMessage = JSON.parse(processedMessage);
+            }
+        } catch (e) {
+            // 如果不是有效的JSON，继续手动处理
+        }
+        
+        // 手动处理常见的转义序列
+        processedMessage = processedMessage.replace(/\\n/g, '\n');  // 换行符
+        processedMessage = processedMessage.replace(/\\t/g, '\t');  // 制表符
+        processedMessage = processedMessage.replace(/\\r/g, '\r');  // 回车符
+        processedMessage = processedMessage.replace(/\\"/g, '"');   // 双引号
+        processedMessage = processedMessage.replace(/\\'/g, "'");   // 单引号
+        
+        // 过滤掉多余的反斜杠
+        processedMessage = processedMessage.replace(/\\/g, '');
+        
+        // HTML转义，防止XSS攻击
+        processedMessage = processedMessage.replace(/&/g, '&amp;')
+                                         .replace(/</g, '&lt;')
+                                         .replace(/>/g, '&gt;')
+                                         .replace(/"/g, '&quot;')
+                                         .replace(/'/g, '&#39;');
+        
+        // 处理制表符，转换为4个空格
+        processedMessage = processedMessage.replace(/\t/g, '    ');
+        
+        // 将换行符转换为<br>标签
+        processedMessage = processedMessage.replace(/\n/g, '<br>');
+        
+        return processedMessage;
+    }
+
     // 向日志添加一条消息
     function appendLog(prefix, message, level, isCode = false) {
         const logContainer = document.getElementById('executionLog');
@@ -535,9 +578,13 @@
         
         // 设置日志内容
         if (isCode) {
-            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> <pre class="d-inline mb-0"><code>${message}</code></pre>`;
+            // 对于代码内容，处理转义字符
+            const processedMessage = formatLogMessage(message);
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> <pre class="d-inline mb-0"><code>${processedMessage}</code></pre>`;
         } else {
-            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> <span class="${prefixClass}">[${prefix}]</span> ${message}`;
+            // 对于普通消息，也处理转义字符
+            const processedMessage = formatLogMessage(message);
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> <span class="${prefixClass}">[${prefix}]</span> ${processedMessage}`;
         }
         
         // 添加到日志容器
