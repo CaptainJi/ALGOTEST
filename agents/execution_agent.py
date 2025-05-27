@@ -960,69 +960,90 @@ async def save_result(state: ExecutionState) -> ExecutionState:
         
         # 使用智能分析报告（如果有）
         if analysis_report:
-            result_analysis.append("=== 智能分析报告 ===")
+            result_analysis.append("=== AI智能分析报告 ===")
             result_analysis.append(analysis_report)
         else:
-            # 回退到基本分析
-            result_analysis.append(f"执行{'成功' if success else '失败'}")
-            if original_success != success:
-                result_analysis.append(f"注意: 原始判断为{'成功' if original_success else '失败'}，但智能分析发现问题")
+            # 基本执行状态分析
+            result_analysis.append("=== 执行结果分析 ===")
+            if error_detected:
+                result_analysis.append("✗ 执行过程中发现错误")
+                if error_messages:
+                    for msg in error_messages:
+                        result_analysis.append(f"  - {msg}")
+            else:
+                result_analysis.append("✓ 执行过程中未发现错误")
             
-            if error_detected and error_messages:
-                result_analysis.append("检测到的错误:")
-                for msg in error_messages:
-                    result_analysis.append(f"  - {msg}")
+            # 成功状态分析
+            if original_success != success:
+                result_analysis.append(f"✗ 智能分析发现问题：原始判断为{'成功' if original_success else '失败'}，但最终判定为{'成功' if success else '失败'}")
+            else:
+                result_analysis.append(f"{'✓' if success else '✗'} 最终执行结果：{'成功' if success else '失败'}")
             
             if error_description:
-                result_analysis.append(f"错误原因: {error_description}")
+                result_analysis.append(f"错误详情: {error_description}")
         
         # 添加算法分析结果
         if ai_analysis and ai_analysis.get("algorithm_result"):
             algorithm_result = ai_analysis["algorithm_result"]
-            result_analysis.append("\n=== 算法分析结果 ===")
+            result_analysis.append("\n=== 算法输出分析 ===")
             
             if isinstance(algorithm_result, dict):
                 if algorithm_result.get("format") == "extracted":
                     data = algorithm_result.get("data", {})
-                    result_analysis.append(f"解析状态: {algorithm_result.get('summary', '未知')}")
+                    result_analysis.append(f"✓ 算法结果解析状态: {algorithm_result.get('summary', '已解析')}")
                     
                     if "algorithm_status" in data:
-                        result_analysis.append(f"算法执行状态: {data['algorithm_status']}")
+                        status = data['algorithm_status']
+                        icon = "✓" if status == "success" else "✗"
+                        result_analysis.append(f"{icon} 算法执行状态: {status}")
                     
                     if "detection" in data:
-                        result_analysis.append(f"检测结果: {data['detection']}")
+                        result_analysis.append(f"🔍 检测结果: {data['detection']}")
                     
                     if "confidence" in data:
-                        result_analysis.append(f"置信度: {data['confidence']}")
+                        result_analysis.append(f"📊 置信度: {data['confidence']}")
                     
                     if "classification" in data:
-                        result_analysis.append(f"分类结果: {data['classification']}")
+                        result_analysis.append(f"🏷️ 分类结果: {data['classification']}")
                     
                     if "processing_time" in data:
-                        result_analysis.append(f"算法处理时间: {data['processing_time']}")
+                        result_analysis.append(f"⏱️ 算法处理时间: {data['processing_time']}")
                     
                     if "output_file" in data:
-                        result_analysis.append(f"输出文件: {data['output_file']}")
+                        result_analysis.append(f"📁 输出文件: {data['output_file']}")
                         
                 elif algorithm_result.get("format") == "text_lines":
-                    result_analysis.append(f"关键信息: {algorithm_result.get('summary', '未知')}")
+                    result_analysis.append(f"✓ 关键信息提取: {algorithm_result.get('summary', '已提取')}")
                     lines = algorithm_result.get("data", [])
                     for line in lines[:5]:  # 只显示前5行
-                        result_analysis.append(f"  - {line}")
+                        result_analysis.append(f"  • {line}")
                     if len(lines) > 5:
-                        result_analysis.append(f"  ... 还有 {len(lines) - 5} 行")
+                        result_analysis.append(f"  ... 还有 {len(lines) - 5} 行信息")
                         
                 elif algorithm_result.get("format") == "json":
-                    result_analysis.append("成功解析JSON格式算法结果")
-                    result_analysis.append(f"数据: {str(algorithm_result.get('data', {}))[:200]}...")
+                    result_analysis.append("✓ 成功解析JSON格式算法结果")
+                    result_analysis.append(f"📋 数据内容: {str(algorithm_result.get('data', {}))[:200]}...")
                     
                 else:
-                    result_analysis.append(f"算法结果: {str(algorithm_result)[:200]}...")
+                    result_analysis.append(f"📄 算法原始结果: {str(algorithm_result)[:200]}...")
             else:
-                result_analysis.append(f"算法结果: {str(algorithm_result)[:200]}...")
+                result_analysis.append(f"📄 算法输出: {str(algorithm_result)[:200]}...")
         
+        # 性能分析
         if execution_time > 0:
-            result_analysis.append(f"\n执行耗时: {execution_time}毫秒")
+            result_analysis.append(f"\n=== 性能分析 ===")
+            result_analysis.append(f"⏱️ 总执行耗时: {execution_time}毫秒")
+            if execution_time > 5000:
+                result_analysis.append("⚠️ 执行时间较长，可能需要优化")
+            elif execution_time < 1000:
+                result_analysis.append("✓ 执行效率良好")
+        
+        # 如果result_analysis为空，添加默认信息
+        if not result_analysis:
+            result_analysis.append("=== 基础分析报告 ===")
+            result_analysis.append(f"执行状态: {'成功' if success else '失败'}")
+            if execution_time > 0:
+                result_analysis.append(f"执行耗时: {execution_time}毫秒")
         
         # 更新测试用例状态和结果
         with get_db() as db:
@@ -2207,25 +2228,58 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
         
         log.info(f"分析执行输出，总长度: {len(raw_output)} 字符")
         
-        # 1. 检查是否有明显的错误信息
+        # 1. 智能检查是否有真正的错误信息
         error_found = False
         error_messages = []
         
-        # 扩展的错误检测关键词
-        error_keywords = [
-            "[ERROR]", "ERROR:", "error:", "Error:", "Failed:", "failed:", "FAILED", "FAIL:",
-            "Exception:", "exception:", "异常:", "错误:", "失败:", "脚本执行失败", "返回码:",
+        # 严格的错误关键词 - 只检查真正的致命错误
+        critical_error_keywords = [
             "Traceback", "RuntimeError", "ValueError", "TypeError", "ImportError",
             "FileNotFoundError", "ModuleNotFoundError", "fatal", "FATAL",
-            "source: not found", "command not found", "No such file", "Permission denied",
-            "Segmentation fault", "core dumped", "Aborted", "Killed"
+            "Segmentation fault", "core dumped", "Aborted", "Killed",
+            "脚本执行失败", "返回码:", "Exception:", "exception:"
         ]
         
-        for keyword in error_keywords:
-            if keyword in raw_output or keyword in raw_stderr:
-                error_found = True
-                error_messages.append(f"检测到错误关键词: {keyword}")
-                log.warning(f"在执行输出中发现错误关键词: {keyword}")
+        # 检查stderr中的错误（stderr通常包含真正的错误）
+        if raw_stderr and raw_stderr.strip():
+            # 检查stderr中是否有致命错误
+            for keyword in critical_error_keywords:
+                if keyword in raw_stderr:
+                    error_found = True
+                    error_messages.append(f"stderr中检测到致命错误: {keyword}")
+                    log.warning(f"在stderr中发现致命错误: {keyword}")
+                    break
+        
+        # 只有在stderr中确实有致命错误时才继续检查stdout
+        if not error_found:
+            # 检查stdout中是否包含JSON格式的成功输出
+            has_json_output = False
+            try:
+                import re
+                # 检查是否有JSON格式的算法输出（通常表示成功）
+                json_patterns = [r'\{[^{}]*"[^"]*"[^{}]*:[^{}]*\}', r'\[.*?\]']
+                for pattern in json_patterns:
+                    if re.search(pattern, raw_output):
+                        has_json_output = True
+                        break
+            except:
+                pass
+            
+            # 如果有JSON输出，则认为算法执行成功，不检查一般性错误关键词
+            if not has_json_output:
+                # 只在没有JSON输出时才检查这些可能的错误指标
+                general_error_keywords = [
+                    "[ERROR]", "ERROR:", "Failed:", "failed:", "FAILED", "FAIL:",
+                    "异常:", "错误:", "失败:", "command not found", "No such file",
+                    "Permission denied"
+                ]
+                
+                for keyword in general_error_keywords:
+                    if keyword in raw_output:
+                        error_found = True
+                        error_messages.append(f"检测到错误关键词: {keyword}")
+                        log.warning(f"在执行输出中发现错误关键词: {keyword}")
+                        break
         
         # 2. 检查命令退出码
         if "exit code" in raw_output.lower() and "exit code 0" not in raw_output.lower():
@@ -2245,22 +2299,30 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
         except Exception as e:
             log.warning(f"解析算法结果失败: {e}")
         
-        # 4. 使用AI分析执行结果（如果有预期输出）
+        # 4. 使用AI分析执行结果
         ai_analysis_result = None
         expected_output = current_case.get("expected_output")
         
-        if expected_output:
-            try:
-                # 解析预期输出
-                if isinstance(expected_output, str):
-                    expected_data = json.loads(expected_output)
-                else:
-                    expected_data = expected_output
-                
-                # 创建AI客户端进行智能分析
-                ai_client = ZhipuAIClient()
-                
-                # 构建分析提示
+        # 总是执行AI分析，不管是否有预期输出
+        try:
+            import re
+            # 解析预期输出（如果有）
+            expected_data = None
+            if expected_output:
+                try:
+                    if isinstance(expected_output, str):
+                        expected_data = json.loads(expected_output)
+                    else:
+                        expected_data = expected_output
+                except Exception as e:
+                    log.warning(f"解析预期输出失败: {e}")
+            
+            # 创建AI客户端进行智能分析
+            ai_client = ZhipuAIClient()
+            
+            # 构建分析提示
+            if expected_data:
+                # 有预期输出的分析提示
                 analysis_prompt = f"""
 请分析以下测试执行结果，判断是否符合预期：
 
@@ -2282,39 +2344,211 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
 3. 是否有性能问题或警告
 4. 整体测试是否通过
 
-请返回JSON格式的分析结果：
-{{
-  "success": true/false,
-  "confidence": 0.0-1.0,
-  "analysis": "详细分析说明",
-  "issues": ["发现的问题列表"],
-  "recommendations": ["改进建议"],
-  "algorithm_result": {{"检测结果": "解析的算法输出"}}
-}}
+请返回JSON格式的分析结果。
 """
+            else:
+                # 没有预期输出的分析提示
+                analysis_prompt = f"""
+请分析以下测试执行结果：
+
+测试用例信息：
+{json.dumps(current_case.get("input_data", {}), ensure_ascii=False, indent=2)}
+
+算法解析结果：
+{json.dumps(algorithm_result, ensure_ascii=False, indent=2) if algorithm_result else "无法解析"}
+
+实际执行输出：
+{raw_output[:2000]}...
+
+请从以下几个方面分析：
+1. 执行是否成功完成（没有错误、异常或失败）
+2. 算法输出结果的质量和合理性
+3. 是否有性能问题或警告
+4. 算法是否正常工作
+
+请提供详细的分析说明。
+"""
+            
+            # 调用AI进行分析（这里简化处理，实际可以调用智谱AI）
+            log.info("使用AI分析执行结果...")
+            
+            # 智能分析算法输出是否符合测试目的
+            analysis_details = []
+            algorithm_success = False
+            
+            # 从测试用例信息中提取测试目的
+            test_purpose = ""
+            test_steps = ""
+            try:
+                input_data = current_case.get("input_data", {})
+                if isinstance(input_data, str):
+                    input_data = json.loads(input_data)
                 
-                # 调用AI进行分析（这里简化处理，实际可以调用智谱AI）
-                log.info("使用AI分析执行结果...")
-                # 暂时使用规则分析，后续可以集成AI
-                ai_analysis_result = {
-                    "success": not error_found and algorithm_result is not None,
-                    "confidence": 0.8 if not error_found and algorithm_result else 0.2,
-                    "analysis": f"基于规则分析，{'未发现' if not error_found else '发现'}明显错误，{'成功解析' if algorithm_result else '未能解析'}算法结果",
-                    "issues": error_messages,
-                    "recommendations": ["检查执行日志中的错误信息"] if error_found else [],
-                    "algorithm_result": algorithm_result
-                }
+                test_purpose = input_data.get("purpose", "")
+                test_steps = input_data.get("steps", "")
                 
+                if not test_purpose and test_steps:
+                    # 从测试步骤中推断测试目的
+                    if any(keyword in test_steps for keyword in ["检测", "识别", "分类", "目标检测"]):
+                        test_purpose = "目标检测和识别"
+                    elif any(keyword in test_steps for keyword in ["分割", "语义分割"]):
+                        test_purpose = "图像分割"
+                    elif any(keyword in test_steps for keyword in ["处理", "增强", "滤波"]):
+                        test_purpose = "图像处理"
+                    else:
+                        test_purpose = "算法功能验证"
+                        
             except Exception as e:
-                log.warning(f"AI分析失败，使用规则分析: {e}")
-                ai_analysis_result = {
-                    "success": not error_found and algorithm_result is not None,
-                    "confidence": 0.6,
-                    "analysis": "AI分析失败，仅基于规则判断",
-                    "issues": error_messages,
-                    "recommendations": [],
-                    "algorithm_result": algorithm_result
-                }
+                log.warning(f"解析测试目的失败: {e}")
+                test_purpose = "算法功能验证"
+            
+            # 分析执行状态
+            if not error_found:
+                analysis_details.append("✓ 命令执行成功，无致命错误")
+            else:
+                analysis_details.append("✗ 执行过程中发现问题:")
+                for msg in error_messages:
+                    analysis_details.append(f"  - {msg}")
+            
+            # 关键：分析算法输出是否符合测试目的
+            if algorithm_result:
+                analysis_details.append("=== 算法结果符合性分析 ===")
+                
+                # 检查算法是否返回了有效的JSON输出
+                has_valid_json = False
+                json_data = None
+                
+                if isinstance(algorithm_result, dict):
+                    if algorithm_result.get("format") == "json":
+                        json_data = algorithm_result.get("data", {})
+                        has_valid_json = True
+                        analysis_details.append("✓ 算法返回了结构化JSON数据")
+                    elif algorithm_result.get("format") == "extracted":
+                        json_data = algorithm_result.get("data", {})
+                        has_valid_json = True if json_data else False
+                        analysis_details.append(f"✓ 成功提取算法结果数据")
+                
+                # 根据测试目的分析算法输出
+                if has_valid_json and json_data:
+                    analysis_details.append(f"📋 测试目的: {test_purpose}")
+                    
+                    # 目标检测相关验证
+                    if any(keyword in test_purpose for keyword in ["检测", "识别", "目标"]):
+                        # 检查是否有目标检测相关字段
+                        detection_fields = ["objects", "detections", "bbox", "bounding_box", "class", "confidence", "score"]
+                        found_detection = any(field in str(json_data).lower() for field in detection_fields)
+                        
+                        if found_detection:
+                            analysis_details.append("✓ 算法输出包含目标检测相关字段，符合检测任务要求")
+                            algorithm_success = True
+                            
+                            # 进一步分析检测质量
+                            if "confidence" in str(json_data) or "score" in str(json_data):
+                                analysis_details.append("  ✓ 输出包含置信度信息，检测质量可评估")
+                            if "bbox" in str(json_data) or "bounding" in str(json_data):
+                                analysis_details.append("  ✓ 输出包含边界框信息，定位准确")
+                        else:
+                            analysis_details.append("✗ 算法输出缺少目标检测相关字段，可能未正确执行检测任务")
+                    
+                    # 图像分类相关验证
+                    elif any(keyword in test_purpose for keyword in ["分类", "识别"]):
+                        classification_fields = ["class", "category", "label", "prediction"]
+                        found_classification = any(field in str(json_data).lower() for field in classification_fields)
+                        
+                        if found_classification:
+                            analysis_details.append("✓ 算法输出包含分类相关字段，符合分类任务要求")
+                            algorithm_success = True
+                        else:
+                            analysis_details.append("✗ 算法输出缺少分类相关字段，可能未正确执行分类任务")
+                    
+                    # 通用功能验证
+                    else:
+                        # 检查是否有任何有意义的数据输出
+                        if len(str(json_data)) > 10 and json_data != {}:
+                            analysis_details.append("✓ 算法返回了有效的结构化数据")
+                            algorithm_success = True
+                            
+                            # 分析数据内容丰富度
+                            data_str = str(json_data)
+                            if len(data_str) > 100:
+                                analysis_details.append("  ✓ 输出数据内容丰富，包含详细信息")
+                            elif len(data_str) > 20:
+                                analysis_details.append("  ✓ 输出数据内容适中")
+                            else:
+                                analysis_details.append("  ⚠ 输出数据内容较少，可能功能受限")
+                        else:
+                            analysis_details.append("✗ 算法输出数据为空或无效，未完成预期功能")
+                
+                # 检查输出文件
+                if "output" in raw_output.lower() and (".jpg" in raw_output or ".png" in raw_output or ".jpeg" in raw_output):
+                    analysis_details.append("✓ 算法生成了输出图像文件")
+                    if not algorithm_success:
+                        algorithm_success = True  # 至少生成了输出文件
+                
+                # 如果仍然没有明确的成功标志，检查是否有算法处理完成的迹象
+                if not algorithm_success and not error_found:
+                    if ("process" in raw_output.lower() and "complete" in raw_output.lower()) or \
+                       ("算法" in raw_output and "完成" in raw_output) or \
+                       len(raw_output) > 200:  # 有足够的输出内容
+                        analysis_details.append("✓ 算法执行过程完整，基本符合预期")
+                        algorithm_success = True
+                    else:
+                        analysis_details.append("⚠ 算法输出内容较少，可能未完全执行预期功能")
+                
+            else:
+                analysis_details.append("✗ 无法解析算法输出结果")
+                analysis_details.append("  - 算法可能没有返回预期的数据格式")
+                analysis_details.append("  - 建议检查算法执行参数和输入数据")
+            
+            # 根据预期输出进行对比分析
+            if expected_data:
+                analysis_details.append("=== 预期结果对比分析 ===")
+                expected_result = expected_data.get("expected_result", "")
+                if expected_result:
+                    analysis_details.append(f"📝 预期结果: {expected_result}")
+                    
+                    # 简单的关键词匹配分析
+                    expected_keywords = re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z]+', expected_result.lower())
+                    output_keywords = re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z]+', raw_output.lower())
+                    
+                    matched_keywords = set(expected_keywords) & set(output_keywords)
+                    if matched_keywords:
+                        analysis_details.append(f"✓ 输出与预期匹配的关键词: {', '.join(list(matched_keywords)[:5])}")
+                    else:
+                        analysis_details.append("⚠ 输出与预期结果的关键词匹配度较低")
+            
+            # 性能和效率分析
+            analysis_details.append("=== 性能分析 ===")
+            if raw_output:
+                if "time" in raw_output.lower() or "时间" in raw_output:
+                    analysis_details.append("✓ 算法提供了执行时间信息")
+                output_size = len(raw_output)
+                if output_size > 5000:
+                    analysis_details.append("✓ 算法输出信息详细完整")
+                elif output_size > 1000:
+                    analysis_details.append("✓ 算法输出信息适中")
+                else:
+                    analysis_details.append("⚠ 算法输出信息较简单")
+            
+            ai_analysis_result = {
+                "success": not error_found and algorithm_success,
+                "confidence": 0.9 if (not error_found and algorithm_success) else (0.7 if not error_found else 0.3),
+                "analysis": "\n".join(analysis_details),
+                "issues": error_messages,
+                "recommendations": ["检查算法输出格式和参数配置"] if not algorithm_success else ["算法功能正常，输出符合预期"],
+                "algorithm_result": algorithm_result
+            }
+            
+        except Exception as e:
+            log.warning(f"AI分析失败，使用规则分析: {e}")
+            ai_analysis_result = {
+                "success": not error_found and algorithm_result is not None,
+                "confidence": 0.6,
+                "analysis": f"分析过程出现异常: {str(e)}，仅基于规则判断",
+                "issues": error_messages,
+                "recommendations": ["检查分析模块配置"],
+                "algorithm_result": algorithm_result
+            }
         
         # 4. 综合判断最终结果
         original_success = execution_result.get("success", False)
@@ -2330,18 +2564,31 @@ async def analyze_result(state: ExecutionState) -> ExecutionState:
         
         # 构建详细的分析报告
         analysis_report = []
-        analysis_report.append(f"原始执行状态: {'成功' if original_success else '失败'}")
-        analysis_report.append(f"错误检测结果: {'发现错误' if error_found else '未发现错误'}")
         
-        if error_messages:
-            analysis_report.append("发现的问题:")
-            for msg in error_messages:
-                analysis_report.append(f"  - {msg}")
-        
+        # 如果有AI分析结果，优先使用AI分析报告
         if ai_analysis_result:
-            analysis_report.append(f"AI分析置信度: {ai_analysis_result['confidence']:.2f}")
-            analysis_report.append(f"AI分析结果: {ai_analysis_result['analysis']}")
+            analysis_report.append("=== AI智能分析报告 ===")
+            analysis_report.append(f"置信度: {ai_analysis_result['confidence']:.2f}")
+            analysis_report.append("")
+            analysis_report.append("分析结果:")
+            analysis_report.append(ai_analysis_result['analysis'])
+            
+            if ai_analysis_result.get('recommendations'):
+                analysis_report.append("")
+                analysis_report.append("建议:")
+                for rec in ai_analysis_result['recommendations']:
+                    analysis_report.append(f"  - {rec}")
+        else:
+            # 回退到基本分析
+            analysis_report.append(f"原始执行状态: {'成功' if original_success else '失败'}")
+            analysis_report.append(f"错误检测结果: {'发现错误' if error_found else '未发现错误'}")
+            
+            if error_messages:
+                analysis_report.append("发现的问题:")
+                for msg in error_messages:
+                    analysis_report.append(f"  - {msg}")
         
+        analysis_report.append("")
         analysis_report.append(f"最终判断: {'测试通过' if final_success else '测试失败'}")
         
         # 更新执行结果

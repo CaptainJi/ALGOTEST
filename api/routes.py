@@ -46,6 +46,7 @@ from agents.execution_agent import (
     load_test_cases, 
     parse_command, 
     execute_command, 
+    analyze_result,
     save_result,
     release_algorithm_container
 )
@@ -1753,6 +1754,15 @@ async def execute_task_tests(
                 
                 state = execute_result
                 
+                # 分析执行结果
+                log.info(f"分析测试用例执行结果: {case_id}")
+                analyze_result_state = await analyze_result(state)
+                if not analyze_result_state or analyze_result_state.get("status") != "analyzed":
+                    log.warning(f"结果分析失败，使用原始结果: {case_id}")
+                    analyze_result_state = state  # 使用原始状态
+                
+                state = analyze_result_state
+                
                 # 获取执行结果
                 execution_result = state.get('execution_result', {})
                 success = execution_result.get('success', False)
@@ -3331,6 +3341,15 @@ async def execute_test_case(
                     error_message = error_msg
                 else:
                     state = execute_result
+                    
+                    # 分析执行结果
+                    log.info(f"分析测试用例执行结果: {case_id}")
+                    analyze_result_state = await analyze_result(state)
+                    if not analyze_result_state or analyze_result_state.get("status") != "analyzed":
+                        log.warning(f"结果分析失败，使用原始结果: {case_id}")
+                        analyze_result_state = state  # 使用原始状态
+                    
+                    state = analyze_result_state
                     
                     # 获取执行结果
                     execution_result = state.get('execution_result', {})
