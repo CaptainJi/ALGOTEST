@@ -175,6 +175,26 @@ def format_test_case(case: DBTestCase) -> TestCase:
     """将数据库测试用例对象转换为API响应模型"""
     input_data = case.input_data or {}
     expected_output = case.expected_output or {}
+    
+    # 优先使用结构化执行结果，如果没有则使用原始输出
+    actual_output = case.actual_output
+    if hasattr(case, 'execution_result') and case.execution_result:
+        # 如果有结构化结果，提取格式化的输出
+        execution_result = case.execution_result
+        if execution_result.get("raw_outputs"):
+            formatted_outputs = []
+            for output in execution_result["raw_outputs"]:
+                if output.get("type") == "stdout" and output.get("content"):
+                    formatted_outputs.append(f"STDOUT:\n{output['content']}")
+                elif output.get("type") == "stderr" and output.get("content"):
+                    formatted_outputs.append(f"STDERR:\n{output['content']}")
+            if formatted_outputs:
+                actual_output = "\n\n".join(formatted_outputs)
+        elif execution_result.get("full_outputs"):
+            formatted_outputs = [output.get("content", "") for output in execution_result["full_outputs"] if output.get("content")]
+            if formatted_outputs:
+                actual_output = "\n\n".join(formatted_outputs)
+    
     return TestCase(
         id=case.case_id,
         name=input_data.get("name", ""),
@@ -183,7 +203,7 @@ def format_test_case(case: DBTestCase) -> TestCase:
         expected_result=expected_output.get("expected_result", ""),
         validation_method=expected_output.get("validation_method", ""),
         document_id=case.document_id,
-        actual_output=case.actual_output,
+        actual_output=actual_output,
         result_analysis=case.result_analysis,
         is_passed=case.is_passed,
         status=case.status or "pending"
@@ -1006,6 +1026,123 @@ async def update_task_dataset_url(
         raise HTTPException(status_code=500, detail=f"更新数据集地址异常: {str(e)}")
 
 
+# 更新任务完整配置
+@router.put("/tasks/{task_id}/config", response_model=MessageResponse)
+async def update_task_config(
+    task_id: str = Path(..., description="任务ID"),
+    config_data: Dict[str, Any] = Body(..., description="任务配置数据"),
+    db: Session = Depends(get_db)
+):
+    """
+    更新任务的完整配置信息
+    
+    - **task_id**: 任务ID
+    - **config_data**: 包含所有配置字段的数据
+    
+    返回成功消息
+    """
+    log.info(f"开始更新任务完整配置: {task_id}")
+    
+    try:
+        # 查找任务
+        task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        
+        # 更新字段
+        update_fields = []
+        if 'algorithm_image' in config_data and config_data['algorithm_image']:
+            task.algorithm_image = config_data['algorithm_image']
+            update_fields.append('algorithm_image')
+            
+        if 'container_name' in config_data:
+            task.container_name = config_data['container_name'] if config_data['container_name'] else None
+            update_fields.append('container_name')
+            
+        if 'dataset_url' in config_data:
+            task.dataset_url = config_data['dataset_url'] if config_data['dataset_url'] else None
+            update_fields.append('dataset_url')
+            
+        if 'dataset_type' in config_data:
+            task.dataset_type = config_data['dataset_type']
+            update_fields.append('dataset_type')
+            
+        if 'dataset_format' in config_data:
+            task.dataset_format = config_data['dataset_format'] if config_data['dataset_format'] else None
+            update_fields.append('dataset_format')
+            
+        if 'container_data_path' in config_data:
+            task.container_data_path = config_data['container_data_path'] or '/data'
+            update_fields.append('container_data_path')
+        
+        # 更新时间戳
+        task.updated_at = datetime.now()
+        
+        # 提交更改
+        db.commit()
+        db.refresh(task)
+        
+        log.success(f"任务配置更新成功: {task_id}, 更新字段: {', '.join(update_fields)}")
+        return {"message": f"任务配置已成功更新，更新了 {len(update_fields)} 个字段"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error(f"更新任务配置异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新任务配置异常: {str(e)}")
+
+
+# 创建新任务
+@router.post("/tasks", response_model=MessageResponse)
+async def create_task(
+    task_data: Dict[str, Any] = Body(..., description="任务创建数据"),
+    db: Session = Depends(get_db)
+):
+    """
+    创建新的测试任务
+    
+    - **task_data**: 包含任务所有配置信息的数据
+    
+    返回创建结果
+    """
+    log.info(f"开始创建新任务")
+    
+    try:
+        # 生成任务ID
+        task_id = generate_unique_id("TASK")
+        
+        # 构建任务数据
+        task_create_data = {
+            "task_id": task_id,
+            "document_id": task_data.get("document_id"),
+            "requirement_doc": "",  # 暂时为空，后续分析文档时更新
+            "description": task_data.get("description"),
+            "algorithm_image": task_data.get("algorithm_image"),
+            "container_name": task_data.get("container_name") if task_data.get("container_name") else None,
+            "dataset_url": task_data.get("dataset_url") if task_data.get("dataset_url") else None,
+            "dataset_type": task_data.get("dataset_type", "local"),
+            "dataset_format": task_data.get("dataset_format") if task_data.get("dataset_format") else None,
+            "container_data_path": task_data.get("container_data_path", "/data"),
+            "container_config": task_data.get("container_config") if task_data.get("container_config") else None,
+            "status": "created"
+        }
+        
+        # 创建任务
+        task = DBTestTask(**task_create_data)
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        
+        log.success(f"任务创建成功: {task_id}")
+        return {"message": f"任务创建成功，任务ID: {task_id}"}
+        
+    except Exception as e:
+        db.rollback()
+        log.error(f"创建任务异常: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建任务异常: {str(e)}")
+
+
 # 添加文档任务信息查询接口
 @router.get("/documents/{document_id}/task-info", response_model=Dict[str, Any])
 async def get_document_task_info(
@@ -1117,9 +1254,14 @@ async def get_all_tasks(
                 task_id=task.task_id,
                 document_id=task.document_id,
                 requirement_doc=task.requirement_doc,
+                description=task.description,
                 algorithm_image=task.algorithm_image,
-                dataset_url=task.dataset_url,
                 container_name=task.container_name,
+                dataset_url=task.dataset_url,
+                dataset_type=task.dataset_type,
+                dataset_format=task.dataset_format,
+                container_data_path=task.container_data_path,
+                container_config=task.container_config,
                 status=task.status or "unknown",
                 created_at=task.created_at.isoformat() if task.created_at else None,
                 updated_at=task.updated_at.isoformat() if task.updated_at else None,

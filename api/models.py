@@ -84,9 +84,24 @@ class TestTaskItem(BaseModel):
     task_id: str = Field(description="任务唯一标识")
     document_id: Optional[str] = Field(None, description="文档ID")
     requirement_doc: Optional[str] = Field(None, description="需求文档内容")
+    description: Optional[str] = Field(None, description="任务描述")
+    
+    # 算法镜像配置
     algorithm_image: Optional[str] = Field(None, description="算法镜像")
-    dataset_url: Optional[str] = Field(None, description="数据集URL")
     container_name: Optional[str] = Field(None, description="容器名称")
+    
+    # 数据集配置
+    dataset_url: Optional[str] = Field(None, description="数据集路径")
+    dataset_type: Optional[str] = Field(None, description="数据集类型")
+    dataset_format: Optional[str] = Field(None, description="数据格式")
+    
+    # 挂载路径配置
+    container_data_path: Optional[str] = Field(None, description="容器内数据路径")
+    
+    # 容器配置
+    container_config: Optional[str] = Field(None, description="容器配置")
+    
+    # 其他字段
     status: str = Field(description="任务状态")
     created_at: str = Field(description="创建时间")
     updated_at: str = Field(description="更新时间")

@@ -70,98 +70,331 @@
 
 <!-- 创建任务模态框 -->
 <div class="modal fade" id="createTaskModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">创建新任务</h5>
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i>创建新任务
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="createTaskForm">
-                    <!-- 步骤指示器 -->
-                    <div class="row mb-4">
-                        <div class="col">
-                            <div class="progress">
-                                <div class="progress-bar" role="progressbar" style="width: 33%">步骤 1/3</div>
+                    <div class="row">
+                        <!-- 左侧：基本信息和文档上传 -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-file-earmark-text me-2"></i>需求文档
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="documentFile" class="form-label">选择文档文件 <span class="text-danger">*</span></label>
+                                        <input type="file" class="form-control" id="documentFile" accept=".pdf,.doc,.docx" required>
+                                        <div class="form-text">支持 PDF、Word 格式的文档</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="taskDescription" class="form-label">任务描述</label>
+                                        <textarea class="form-control" id="taskDescription" rows="3" placeholder="简要描述此测试任务的目的和内容"></textarea>
+                                        <div class="form-text">可选：帮助团队成员理解任务目标</div>
+                                    </div>
+                                    
+                                    <!-- 文档预览区域 -->
+                                    <div id="documentPreview" class="border rounded p-3 bg-light" style="display: none;">
+                                        <h6 class="text-muted mb-2">文档信息</h6>
+                                        <div id="documentInfo"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 右侧：算法镜像配置 -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-box me-2"></i>算法镜像配置
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="algorithmImage" class="form-label">算法镜像 <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="algorithmImage" placeholder="例如：registry.example.com/algorithm:latest" required>
+                                        <div class="form-text">Docker镜像的完整地址，包含标签</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="containerName" class="form-label">容器名称</label>
+                                        <input type="text" class="form-control" id="containerName" placeholder="自动生成">
+                                        <div class="form-text">留空则自动生成唯一名称</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-
-                    <!-- 步骤1：上传文档 -->
-                    <div id="step1" class="step-content">
-                        <h6 class="mb-3">第一步：上传需求文档</h6>
-                        <div class="mb-3">
-                            <label for="documentFile" class="form-label">选择文档文件</label>
-                            <input type="file" class="form-control" id="documentFile" accept=".pdf,.doc,.docx">
-                            <div class="form-text">支持 PDF、Word 格式的文档</div>
+                    
+                    <div class="row mt-3">
+                        <!-- 数据集配置 -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-database me-2"></i>数据集配置
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="datasetUrl" class="form-label">数据集路径</label>
+                                        <input type="text" class="form-control" id="datasetUrl" placeholder="/path/to/dataset 或 http://example.com/dataset.zip">
+                                        <div class="form-text">宿主机路径或远程URL地址</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="datasetType" class="form-label">数据集类型</label>
+                                        <select class="form-select" id="datasetType">
+                                            <option value="local">宿主机路径</option>
+                                            <option value="url">远程URL</option>
+                                            <option value="s3">S3存储</option>
+                                            <option value="ftp">FTP服务器</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="datasetFormat" class="form-label">数据格式</label>
+                                        <select class="form-select" id="datasetFormat">
+                                            <option value="">自动检测</option>
+                                            <option value="json">JSON</option>
+                                            <option value="csv">CSV</option>
+                                            <option value="xml">XML</option>
+                                            <option value="txt">文本文件</option>
+                                            <option value="binary">二进制文件</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="text-end">
-                            <button type="button" class="btn btn-primary" onclick="nextStep(2)">下一步</button>
+                        
+                        <!-- 挂载路径配置 -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-folder2-open me-2"></i>挂载路径配置
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="containerDataPath" class="form-label">容器内数据路径</label>
+                                        <input type="text" class="form-control" id="containerDataPath" placeholder="/data" value="/data">
+                                        <div class="form-text">容器内的数据挂载点，用于访问测试数据</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- 步骤2：配置数据集 -->
-                    <div id="step2" class="step-content" style="display: none;">
-                        <h6 class="mb-3">第二步：配置数据集</h6>
-                        <div class="mb-3">
-                            <label for="datasetUrl" class="form-label">数据集URL</label>
-                            <input type="text" class="form-control" id="datasetUrl" placeholder="输入数据集的URL地址">
-                            <div class="form-text">请确保数据集可以被系统访问</div>
-                        </div>
-                        <div class="text-end">
-                            <button type="button" class="btn btn-secondary me-2" onclick="prevStep(1)">上一步</button>
-                            <button type="button" class="btn btn-primary" onclick="nextStep(3)">下一步</button>
-                        </div>
-                    </div>
-
-                    <!-- 步骤3：配置算法镜像 -->
-                    <div id="step3" class="step-content" style="display: none;">
-                        <h6 class="mb-3">第三步：配置算法镜像</h6>
-                        <div class="mb-3">
-                            <label for="algorithmImage" class="form-label">算法镜像</label>
-                            <input type="text" class="form-control" id="algorithmImage" placeholder="输入算法镜像名称">
-                            <div class="form-text">例如：registry.example.com/algorithm:latest</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="containerConfig" class="form-label">容器配置</label>
-                            <textarea class="form-control" id="containerConfig" rows="3" placeholder="输入容器配置（JSON格式）"></textarea>
-                            <div class="form-text">可选：配置容器的资源限制、环境变量等</div>
-                        </div>
-                        <div class="text-end">
-                            <button type="button" class="btn btn-secondary me-2" onclick="prevStep(2)">上一步</button>
-                            <button type="button" class="btn btn-primary" onclick="createTask()">创建任务</button>
+                    
+                    <!-- 高级配置 -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-gear me-2"></i>高级配置
+                                        <button type="button" class="btn btn-sm btn-outline-secondary float-end" onclick="toggleAdvancedConfig()">
+                                            <i class="bi bi-chevron-down" id="advancedToggleIcon"></i>
+                                        </button>
+                                    </h6>
+                                </div>
+                                <div class="card-body" id="advancedConfig" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="memoryLimit" class="form-label">内存限制</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" id="memoryLimit" placeholder="1024">
+                                                    <span class="input-group-text">MB</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label for="cpuLimit" class="form-label">CPU限制</label>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control" id="cpuLimit" placeholder="1.0" step="0.1">
+                                                    <span class="input-group-text">核</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-6">
+                                            <div class="mb-3">
+                                                <label for="environmentVars" class="form-label">环境变量</label>
+                                                <textarea class="form-control" id="environmentVars" rows="3" placeholder="KEY1=value1&#10;KEY2=value2"></textarea>
+                                                <div class="form-text">每行一个环境变量，格式：KEY=VALUE</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="dockerCommand" class="form-label">启动命令</label>
+                                        <input type="text" class="form-control" id="dockerCommand" placeholder="python main.py">
+                                        <div class="form-text">容器启动时执行的命令，留空使用镜像默认命令</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="networkMode" class="form-label">网络模式</label>
+                                        <select class="form-select" id="networkMode">
+                                            <option value="bridge">bridge（默认）</option>
+                                            <option value="host">host</option>
+                                            <option value="none">none</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="createTask()">
+                    <i class="bi bi-plus-lg me-1"></i>创建任务
+                </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 任务配置模态框 -->
+<!-- 任务配置修改模态框 -->
 <div class="modal fade" id="taskConfigModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">任务配置</h5>
+                <h5 class="modal-title">
+                    <i class="bi bi-gear me-2"></i>修改任务配置
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="taskConfigForm">
                     <input type="hidden" id="configTaskId">
-                    <div class="mb-3">
-                        <label for="configAlgorithmImage" class="form-label">算法镜像</label>
-                        <input type="text" class="form-control" id="configAlgorithmImage">
+                    
+                    <!-- 基本信息 -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">基本信息</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">任务ID</label>
+                                        <input type="text" class="form-control" id="configTaskIdDisplay" readonly>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">当前状态</label>
+                                        <span id="configTaskStatus" class="badge"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="configDatasetUrl" class="form-label">数据集URL</label>
-                        <input type="text" class="form-control" id="configDatasetUrl">
+                    
+                    <!-- 算法镜像配置 -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="bi bi-box me-2"></i>算法镜像配置
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="configAlgorithmImage" class="form-label">算法镜像</label>
+                                <input type="text" class="form-control" id="configAlgorithmImage" placeholder="例如：registry.example.com/algorithm:latest">
+                                <div class="form-text">Docker镜像的完整地址，包含标签</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="configContainerName" class="form-label">容器名称</label>
+                                <input type="text" class="form-control" id="configContainerName" placeholder="自动生成">
+                                <div class="form-text">修改后需要重新创建容器</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 数据集配置 -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="bi bi-database me-2"></i>数据集配置
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="configDatasetUrl" class="form-label">数据集路径</label>
+                                <input type="text" class="form-control" id="configDatasetUrl" placeholder="/path/to/dataset 或 http://example.com/dataset.zip">
+                                <div class="form-text">宿主机路径或远程URL地址</div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="configDatasetType" class="form-label">数据集类型</label>
+                                        <select class="form-select" id="configDatasetType">
+                                            <option value="local">宿主机路径</option>
+                                            <option value="url">远程URL</option>
+                                            <option value="s3">S3存储</option>
+                                            <option value="ftp">FTP服务器</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="configDatasetFormat" class="form-label">数据格式</label>
+                                        <select class="form-select" id="configDatasetFormat">
+                                            <option value="">自动检测</option>
+                                            <option value="json">JSON</option>
+                                            <option value="csv">CSV</option>
+                                            <option value="xml">XML</option>
+                                            <option value="txt">文本文件</option>
+                                            <option value="binary">二进制文件</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 挂载路径配置 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="bi bi-folder2-open me-2"></i>挂载路径配置
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="configContainerDataPath" class="form-label">容器内数据路径</label>
+                                <input type="text" class="form-control" id="configContainerDataPath" placeholder="/data">
+                                <div class="form-text">容器内的数据挂载点，用于访问测试数据</div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" onclick="saveTaskConfig()">保存配置</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveTaskConfig()">
+                    <i class="bi bi-save me-1"></i>保存修改
+                </button>
             </div>
         </div>
     </div>
@@ -317,46 +550,91 @@
         renderTasks(filteredTasks);
     }
     
-    function nextStep(step) {
-        // 验证当前步骤
-        if (!validateStep(currentStep)) return;
+    // 切换高级配置显示/隐藏
+    function toggleAdvancedConfig() {
+        const advancedConfig = document.getElementById('advancedConfig');
+        const toggleIcon = document.getElementById('advancedToggleIcon');
         
-        // 隐藏当前步骤
-        document.getElementById(`step${currentStep}`).style.display = 'none';
-        // 显示下一步
-        document.getElementById(`step${step}`).style.display = 'block';
-        // 更新进度条
-        document.querySelector('.progress-bar').style.width = `${(step/3)*100}%`;
-        document.querySelector('.progress-bar').textContent = `步骤 ${step}/3`;
-        // 更新当前步骤
-        currentStep = step;
-    }
-    
-    function prevStep(step) {
-        // 隐藏当前步骤
-        document.getElementById(`step${currentStep}`).style.display = 'none';
-        // 显示上一步
-        document.getElementById(`step${step}`).style.display = 'block';
-        // 更新进度条
-        document.querySelector('.progress-bar').style.width = `${(step/3)*100}%`;
-        document.querySelector('.progress-bar').textContent = `步骤 ${step}/3`;
-        // 更新当前步骤
-        currentStep = step;
-    }
-    
-    function validateStep(step) {
-        if (step === 1) {
-            const file = document.getElementById('documentFile').files[0];
-            if (!file) {
-                showNotification('warning', '请选择需要上传的文档');
-                return false;
-            }
-            return true;
+        if (advancedConfig.style.display === 'none') {
+            advancedConfig.style.display = 'block';
+            toggleIcon.className = 'bi bi-chevron-up';
+        } else {
+            advancedConfig.style.display = 'none';
+            toggleIcon.className = 'bi bi-chevron-down';
         }
+    }
+    
+    // 文档文件选择事件处理
+    document.addEventListener('DOMContentLoaded', function() {
+        const documentFile = document.getElementById('documentFile');
+        if (documentFile) {
+            documentFile.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    showDocumentPreview(file);
+                }
+            });
+        }
+    });
+    
+    function showDocumentPreview(file) {
+        const preview = document.getElementById('documentPreview');
+        const info = document.getElementById('documentInfo');
+        
+        const fileSize = (file.size / 1024 / 1024).toFixed(2);
+        const fileType = file.type || '未知类型';
+        
+        info.innerHTML = `
+            <div class="row">
+                <div class="col-6">
+                    <small class="text-muted">文件名:</small><br>
+                    <span class="fw-bold">${file.name}</span>
+                </div>
+                <div class="col-3">
+                    <small class="text-muted">大小:</small><br>
+                    <span>${fileSize} MB</span>
+                </div>
+                <div class="col-3">
+                    <small class="text-muted">类型:</small><br>
+                    <span>${fileType}</span>
+                </div>
+            </div>
+        `;
+        
+        preview.style.display = 'block';
+    }
+    
+    function validateCreateTaskForm() {
+        // 验证必填字段
+        const documentFile = document.getElementById('documentFile').files[0];
+        const algorithmImage = document.getElementById('algorithmImage').value.trim();
+        
+        if (!documentFile) {
+            showNotification('warning', '请选择需求文档文件');
+            return false;
+        }
+        
+        if (!algorithmImage) {
+            showNotification('warning', '请输入算法镜像地址');
+            return false;
+        }
+        
         return true;
     }
     
     function createTask() {
+        // 验证表单
+        if (!validateCreateTaskForm()) {
+            return;
+        }
+        
+        // 显示加载状态
+        const createBtn = document.querySelector('#createTaskModal .btn-primary');
+        const originalText = createBtn.innerHTML;
+        createBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>创建中...';
+        createBtn.disabled = true;
+        
+        // 收集表单数据
         const formData = new FormData();
         formData.append('file', document.getElementById('documentFile').files[0]);
         
@@ -369,6 +647,9 @@
         .then(data => {
             const documentId = data.document_id;
             
+            // 构建容器配置
+            const containerConfig = buildContainerConfig();
+            
             // 第二步：创建任务
             return fetch('/api/tasks', {
                 method: 'POST',
@@ -377,9 +658,14 @@
                 },
                 body: JSON.stringify({
                     document_id: documentId,
-                    dataset_url: document.getElementById('datasetUrl').value.trim(),
+                    description: document.getElementById('taskDescription').value.trim(),
                     algorithm_image: document.getElementById('algorithmImage').value.trim(),
-                    container_config: document.getElementById('containerConfig').value.trim()
+                    container_name: document.getElementById('containerName').value.trim(),
+                    dataset_url: document.getElementById('datasetUrl').value.trim(),
+                    dataset_type: document.getElementById('datasetType').value,
+                    dataset_format: document.getElementById('datasetFormat').value,
+                    container_data_path: document.getElementById('containerDataPath').value.trim(),
+                    container_config: containerConfig
                 })
             });
         })
@@ -390,33 +676,99 @@
             modal.hide();
             
             // 显示成功消息
-            showNotification('success', '任务创建成功');
+            showNotification('success', '任务创建成功！所有配置已保存，可以直接启动容器进行测试。');
             
             // 重新加载任务列表
             loadTasks();
             
             // 重置表单
-            document.getElementById('createTaskForm').reset();
-            currentStep = 1;
-            document.getElementById('step1').style.display = 'block';
-            document.getElementById('step2').style.display = 'none';
-            document.getElementById('step3').style.display = 'none';
-            document.querySelector('.progress-bar').style.width = '33%';
-            document.querySelector('.progress-bar').textContent = '步骤 1/3';
+            resetCreateTaskForm();
         })
         .catch(error => {
             console.error('创建任务失败:', error);
             showNotification('danger', `创建任务失败: ${error.message}`);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            createBtn.innerHTML = originalText;
+            createBtn.disabled = false;
         });
+    }
+    
+    function buildContainerConfig() {
+        const config = {};
+        
+        // 资源限制
+        const memoryLimit = document.getElementById('memoryLimit').value.trim();
+        const cpuLimit = document.getElementById('cpuLimit').value.trim();
+        if (memoryLimit) config.memory_limit = `${memoryLimit}m`;
+        if (cpuLimit) config.cpu_limit = parseFloat(cpuLimit);
+        
+        // 环境变量
+        const envVars = document.getElementById('environmentVars').value.trim();
+        if (envVars) {
+            config.environment = {};
+            envVars.split('\n').forEach(line => {
+                const [key, value] = line.split('=');
+                if (key && value) {
+                    config.environment[key.trim()] = value.trim();
+                }
+            });
+        }
+        
+        // 启动命令
+        const dockerCommand = document.getElementById('dockerCommand').value.trim();
+        if (dockerCommand) config.command = dockerCommand;
+        
+        // 网络模式
+        const networkMode = document.getElementById('networkMode').value;
+        if (networkMode && networkMode !== 'bridge') config.network_mode = networkMode;
+        
+        return Object.keys(config).length > 0 ? JSON.stringify(config) : '';
+    }
+    
+    function resetCreateTaskForm() {
+        document.getElementById('createTaskForm').reset();
+        document.getElementById('documentPreview').style.display = 'none';
+        document.getElementById('advancedConfig').style.display = 'none';
+        document.getElementById('advancedToggleIcon').className = 'bi bi-chevron-down';
+        
+        // 重置默认值
+        document.getElementById('containerDataPath').value = '/data';
+        document.getElementById('networkMode').value = 'bridge';
     }
     
     function openTaskConfig(taskId) {
         const task = tasks.find(t => t.task_id === taskId);
         if (!task) return;
         
+        // 填充基本信息
         document.getElementById('configTaskId').value = taskId;
+        document.getElementById('configTaskIdDisplay').value = taskId;
+        
+        // 设置状态徽章
+        const statusBadge = document.getElementById('configTaskStatus');
+        const statusClass = {
+            'created': 'secondary',
+            'preparing': 'info',
+            'executing': 'primary',
+            'completed': 'success',
+            'failed': 'danger'
+        }[task.status] || 'secondary';
+        statusBadge.className = `badge bg-${statusClass}`;
+        statusBadge.textContent = getStatusText(task.status);
+        
+        // 填充算法镜像配置
         document.getElementById('configAlgorithmImage').value = task.algorithm_image || '';
+        document.getElementById('configContainerName').value = task.container_name || '';
+        
+        // 填充数据集配置
         document.getElementById('configDatasetUrl').value = task.dataset_url || '';
+        document.getElementById('configDatasetType').value = task.dataset_type || 'local';
+        document.getElementById('configDatasetFormat').value = task.dataset_format || '';
+        
+        // 填充挂载路径配置
+        document.getElementById('configContainerDataPath').value = task.container_data_path || '/data';
         
         const modal = new bootstrap.Modal(document.getElementById('taskConfigModal'));
         modal.show();
@@ -424,45 +776,55 @@
     
     function saveTaskConfig() {
         const taskId = document.getElementById('configTaskId').value;
-        const algorithmImage = document.getElementById('configAlgorithmImage').value.trim();
-        const datasetUrl = document.getElementById('configDatasetUrl').value.trim();
         
-        Promise.all([
-            // 更新算法镜像
-            fetch(`/api/tasks/${taskId}/algorithm-image`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    algorithm_image: algorithmImage
-                })
-            }),
-            // 更新数据集URL
-            fetch(`/api/tasks/${taskId}/dataset-url`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    dataset_url: datasetUrl
-                })
-            })
-        ])
-        .then(() => {
-            // 关闭模态框
-            const modal = bootstrap.Modal.getInstance(document.getElementById('taskConfigModal'));
-            modal.hide();
-            
-            // 显示成功消息
-            showNotification('success', '任务配置已更新');
-            
-            // 重新加载任务列表
-            loadTasks();
+        // 显示加载状态
+        const saveBtn = document.querySelector('#taskConfigModal .btn-primary');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>保存中...';
+        saveBtn.disabled = true;
+        
+        // 收集所有配置数据
+        const configData = {
+            algorithm_image: document.getElementById('configAlgorithmImage').value.trim(),
+            container_name: document.getElementById('configContainerName').value.trim(),
+            dataset_url: document.getElementById('configDatasetUrl').value.trim(),
+            dataset_type: document.getElementById('configDatasetType').value,
+            dataset_format: document.getElementById('configDatasetFormat').value,
+            container_data_path: document.getElementById('configContainerDataPath').value.trim()
+        };
+        
+        // 调用更新任务配置的API
+        fetch(`/api/tasks/${taskId}/config`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(configData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success !== false) {
+                // 关闭模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('taskConfigModal'));
+                modal.hide();
+                
+                // 显示成功消息
+                showNotification('success', '任务配置已更新！如果修改了容器相关配置，请重新启动容器。');
+                
+                // 重新加载任务列表
+                loadTasks();
+            } else {
+                throw new Error(data.message || '更新配置失败');
+            }
         })
         .catch(error => {
             console.error('更新任务配置失败:', error);
             showNotification('danger', `更新任务配置失败: ${error.message}`);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
         });
     }
     
@@ -492,12 +854,14 @@
         fetch(`/api/tasks/${taskId}/prepare`, {
             method: 'POST'
         })
-        .then(response => response.json())
+        .then(handleAPIResponse)
         .then(data => {
             if (data.success) {
                 showNotification('success', 'Docker容器已成功启动');
             } else {
-                showNotification('danger', `启动Docker容器失败: ${data.error || '未知错误'}`);
+                // 处理API返回成功但包含错误信息的情况
+                const errorMsg = extractErrorMessage(data, '启动Docker容器失败');
+                showNotification('danger', `启动Docker容器失败: ${errorMsg}`);
             }
             loadTasks(); // 刷新任务列表
         })
@@ -516,12 +880,14 @@
         fetch(`/api/tasks/${taskId}/release-docker`, {
             method: 'POST'
         })
-        .then(response => response.json())
+        .then(handleAPIResponse)
         .then(data => {
             if (data.success) {
                 showNotification('success', 'Docker容器已成功停止');
             } else {
-                showNotification('danger', `停止Docker容器失败: ${data.error || '未知错误'}`);
+                // 处理API返回成功但包含错误信息的情况
+                const errorMsg = extractErrorMessage(data, '停止Docker容器失败');
+                showNotification('danger', `停止Docker容器失败: ${errorMsg}`);
             }
             loadTasks(); // 刷新任务列表
         })

@@ -31,9 +31,45 @@
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card mb-4">
+    <!-- 测试信息和执行结果 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-info-circle me-2"></i>测试信息
+                </div>
+                <div class="card-body" id="testInfoContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载测试信息...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-clipboard-data me-2"></i>执行结果
+                </div>
+                <div class="card-body" id="resultContainer">
+                    <div class="text-center py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mt-2">加载执行结果...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 测试步骤和预期结果 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
                 <div class="card-header">
                     <i class="bi bi-list-check me-2"></i>测试步骤
                 </div>
@@ -46,7 +82,9 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
                     <i class="bi bi-check2-circle me-2"></i>预期结果
@@ -61,33 +99,17 @@
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-md-4">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <i class="bi bi-info-circle me-2"></i>测试信息
-                </div>
-                <div class="card-body" id="testInfoContainer">
-                    <div class="text-center py-4">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                            <span class="visually-hidden">加载中...</span>
-                        </div>
-                        <p class="mt-2">加载测试信息...</p>
-                    </div>
-                </div>
-            </div>
-
+    <!-- 详细执行输出（如果有的话，全宽显示） -->
+    <div class="row" id="detailedOutputRow" style="display: none;">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <i class="bi bi-clipboard-data me-2"></i>执行结果
+                    <i class="bi bi-terminal me-2"></i>详细执行输出
                 </div>
-                <div class="card-body" id="resultContainer">
-                    <div class="text-center py-4">
-                        <div class="spinner-border spinner-border-sm" role="status">
-                            <span class="visually-hidden">加载中...</span>
-                        </div>
-                        <p class="mt-2">加载执行结果...</p>
-                    </div>
+                <div class="card-body" id="detailedOutputContainer">
+                    <!-- 详细输出内容将在这里显示 -->
                 </div>
             </div>
         </div>
@@ -136,6 +158,174 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 输出格式化样式 */
+    .output-formatted {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .output-formatted pre {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+        margin: 0;
+        overflow-x: auto;
+    }
+    
+    .output-formatted .json-key {
+        color: #0066cc;
+        font-weight: bold;
+    }
+    
+    .output-formatted .json-string {
+        color: #009900;
+    }
+    
+    .output-formatted .json-number {
+        color: #cc6600;
+    }
+    
+    .output-formatted .json-boolean {
+        color: #990099;
+        font-weight: bold;
+    }
+    
+    .output-formatted .json-null {
+        color: #999999;
+        font-style: italic;
+    }
+    
+    .analysis-card {
+        transition: all 0.3s ease;
+    }
+    
+    .analysis-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .keyword-badge {
+        margin: 2px;
+        font-size: 0.8em;
+    }
+    
+    .output-section {
+        border-left: 4px solid #007bff;
+        padding-left: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .output-section.error {
+        border-left-color: #dc3545;
+    }
+    
+    .output-section.warning {
+        border-left-color: #ffc107;
+    }
+    
+    .output-section.success {
+        border-left-color: #28a745;
+    }
+    
+    .tab-content {
+        min-height: 200px;
+    }
+    
+    .nav-tabs .nav-link {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+    
+    .card-header {
+        padding: 0.75rem 1rem;
+        background-color: #f8f9fa;
+    }
+    
+    .nav-tabs .nav-link.active {
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+    }
+    
+    .output-stats .card {
+        border: none;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+    
+    .json-container {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 0.375rem;
+        overflow: hidden;
+    }
+    
+    .json-header {
+        background: #e9ecef;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+    
+    .json-body {
+        padding: 1rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .feature-badge {
+        display: inline-block;
+        margin: 0.25rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    .time-badge {
+        background: linear-gradient(135deg, #17a2b8, #138496);
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        margin: 0.125rem;
+    }
+    
+    .error-line, .warning-line {
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-radius: 0.25rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+    }
+    
+    .error-line {
+        background-color: #f8d7da;
+        border-left: 4px solid #dc3545;
+        color: #721c24;
+    }
+    
+    .warning-line {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+        color: #856404;
+    }
+    
+    .important-line {
+        padding: 0.375rem 0.75rem;
+        margin: 0.125rem 0;
+        background-color: #f8f9fa;
+        border-left: 3px solid #28a745;
+        border-radius: 0.25rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+    }
+</style>
 {% endblock %}
 
 {% block extra_js %}
@@ -601,32 +791,66 @@
             if (data.status === 'completed') {
                 finalStatus = data.is_passed ? 'passed' : 'failed';
             }
+            
+            // 在执行结果区域显示简化版本
             resultContainer.innerHTML = `
                 <div class="text-center mb-3">
-                    <div class="display-1 ${finalStatus === 'passed' ? 'text-success' : 'text-danger'}">
+                    <div class="display-4 ${finalStatus === 'passed' ? 'text-success' : 'text-danger'}">
                         <i class="bi ${finalStatus === 'passed' ? 'bi-check-circle' : 'bi-x-circle'}"></i>
                     </div>
-                    <h5 class="${finalStatus === 'passed' ? 'text-success' : 'text-danger'}">
+                    <h6 class="${finalStatus === 'passed' ? 'text-success' : 'text-danger'} mb-3">
                         ${finalStatus === 'passed' ? '测试通过' : '测试失败'}
-                    </h5>
+                    </h6>
+                    ${data.actual_output ? `
+                    <button class="btn btn-outline-primary btn-sm" onclick="showDetailedOutput()">
+                        <i class="bi bi-eye me-1"></i>查看详细输出
+                    </button>
+                    ` : ''}
                 </div>
-                ${data.actual_output ? `
-                <div class="mt-3">
-                    <h6 class="mb-2">实际输出:</h6>
-                    <div class="border p-2 bg-light">
-                        <pre class="mb-0"><code>${data.actual_output}</code></pre>
-                    </div>
-                </div>
-                ` : ''}
                 ${data.result_analysis ? `
                 <div class="mt-3">
-                    <h6 class="mb-2">结果分析:</h6>
+                    <h6 class="mb-2 text-muted">结果分析:</h6>
                     <div class="border-start border-4 ${finalStatus === 'passed' ? 'border-success' : 'border-danger'} ps-3">
-                        ${formatMultilineText(data.result_analysis)}
+                        <small>${formatMultilineText(data.result_analysis)}</small>
                     </div>
                 </div>
                 ` : ''}
             `;
+            
+            // 如果有输出，准备详细输出区域
+            if (data.actual_output) {
+                const detailedContainer = document.getElementById('detailedOutputContainer');
+                detailedContainer.innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <ul class="nav nav-tabs card-header-tabs" id="outputTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="formatted-tab" data-bs-toggle="tab" data-bs-target="#formatted" type="button" role="tab">格式化视图</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button" role="tab">原始输出</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab">结果分析</button>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="card-body">
+                            <div class="tab-content" id="outputTabContent">
+                                <div class="tab-pane fade show active" id="formatted" role="tabpanel">
+                                    ${formatOutput(data.actual_output)}
+                                </div>
+                                <div class="tab-pane fade" id="raw" role="tabpanel">
+                                    <pre class="mb-0" style="max-height: 500px; overflow-y: auto;"><code>${escapeHtml(data.actual_output)}</code></pre>
+                                </div>
+                                <div class="tab-pane fade" id="analysis" role="tabpanel">
+                                    ${analyzeOutput(data.actual_output)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
         } else {
             // 处理其他未知状态
             resultContainer.innerHTML = `
@@ -636,8 +860,27 @@
                     ${data.actual_output ? `
                     <div class="mt-3">
                         <h6 class="mb-2">执行输出:</h6>
-                        <div class="border p-2 bg-light">
-                            <pre class="mb-0"><code>${data.actual_output}</code></pre>
+                        <div class="card">
+                            <div class="card-header">
+                                <ul class="nav nav-tabs card-header-tabs" id="outputTabs2" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="formatted-tab2" data-bs-toggle="tab" data-bs-target="#formatted2" type="button" role="tab">格式化视图</button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="raw-tab2" data-bs-toggle="tab" data-bs-target="#raw2" type="button" role="tab">原始输出</button>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="card-body">
+                                <div class="tab-content" id="outputTabContent2">
+                                    <div class="tab-pane fade show active" id="formatted2" role="tabpanel">
+                                        ${formatOutput(data.actual_output)}
+                                    </div>
+                                    <div class="tab-pane fade" id="raw2" role="tabpanel">
+                                        <pre class="mb-0" style="max-height: 400px; overflow-y: auto;"><code>${escapeHtml(data.actual_output)}</code></pre>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     ` : ''}
@@ -687,6 +930,214 @@
         }).join('');
     }
     
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function formatOutput(output) {
+        if (!output) return '<div class="text-muted">无输出内容</div>';
+        
+        let formattedHtml = '';
+        
+        // 尝试提取和格式化JSON数据
+        const jsonMatches = output.match(/\{[\s\S]*?\}/g);
+        if (jsonMatches) {
+            formattedHtml += '<div class="mb-3 output-section"><h6 class="text-primary"><i class="bi bi-code-square me-2"></i>检测到的JSON数据:</h6>';
+            jsonMatches.forEach((jsonStr, index) => {
+                try {
+                    const jsonObj = JSON.parse(jsonStr);
+                    formattedHtml += `
+                        <div class="json-container mb-2">
+                            <div class="json-header">
+                                JSON对象 ${index + 1}
+                            </div>
+                            <div class="json-body">
+                                <pre class="mb-0 output-formatted"><code class="language-json">${JSON.stringify(jsonObj, null, 2)}</code></pre>
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    formattedHtml += `
+                        <div class="alert alert-warning py-2 mb-2">
+                            <small><i class="bi bi-exclamation-triangle me-1"></i>无效的JSON格式: ${escapeHtml(jsonStr.substring(0, 100))}...</small>
+                        </div>
+                    `;
+                }
+            });
+            formattedHtml += '</div>';
+        }
+        
+        // 分析执行时间
+        const timeMatches = output.match(/(\d+(?:\.\d+)?)\s*(ms|毫秒|milliseconds?)/gi);
+        if (timeMatches) {
+            formattedHtml += '<div class="mb-3 output-section"><h6 class="text-info"><i class="bi bi-stopwatch me-2"></i>执行时间信息:</h6>';
+            formattedHtml += '<div class="d-flex flex-wrap">';
+            timeMatches.forEach((timeStr, index) => {
+                formattedHtml += `<span class="time-badge">${escapeHtml(timeStr)}</span>`;
+            });
+            formattedHtml += '</div></div>';
+        }
+        
+        // 分析错误和警告
+        const lines = output.split('\n');
+        const errors = lines.filter(line => 
+            line.toLowerCase().includes('error') || 
+            line.toLowerCase().includes('错误') ||
+            line.toLowerCase().includes('exception') ||
+            line.toLowerCase().includes('failed')
+        );
+        const warnings = lines.filter(line => 
+            line.toLowerCase().includes('warning') || 
+            line.toLowerCase().includes('警告') ||
+            line.toLowerCase().includes('warn')
+        );
+        
+        if (errors.length > 0) {
+            formattedHtml += '<div class="mb-3 output-section error"><h6 class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>错误信息:</h6>';
+            errors.forEach(error => {
+                formattedHtml += `<div class="error-line">${escapeHtml(error)}</div>`;
+            });
+            formattedHtml += '</div>';
+        }
+        
+        if (warnings.length > 0) {
+            formattedHtml += '<div class="mb-3 output-section warning"><h6 class="text-warning"><i class="bi bi-exclamation-circle me-2"></i>警告信息:</h6>';
+            warnings.forEach(warning => {
+                formattedHtml += `<div class="warning-line">${escapeHtml(warning)}</div>`;
+            });
+            formattedHtml += '</div>';
+        }
+        
+        // 显示关键输出行
+        const importantLines = lines.filter(line => {
+            const lower = line.toLowerCase();
+            return lower.includes('success') || 
+                   lower.includes('成功') ||
+                   lower.includes('complete') ||
+                   lower.includes('完成') ||
+                   lower.includes('result') ||
+                   lower.includes('结果') ||
+                   (line.trim() && !lower.includes('debug') && !lower.includes('info'));
+        });
+        
+        if (importantLines.length > 0) {
+            formattedHtml += '<div class="mb-3 output-section success"><h6 class="text-success"><i class="bi bi-check-circle me-2"></i>关键输出:</h6>';
+            importantLines.slice(0, 10).forEach(line => {
+                if (line.trim()) {
+                    formattedHtml += `<div class="important-line">${escapeHtml(line)}</div>`;
+                }
+            });
+            if (importantLines.length > 10) {
+                formattedHtml += `<div class="text-muted mt-2"><small><i class="bi bi-three-dots me-1"></i>还有 ${importantLines.length - 10} 行关键输出</small></div>`;
+            }
+            formattedHtml += '</div>';
+        }
+        
+        return formattedHtml || '<div class="text-muted">无法解析输出内容</div>';
+    }
+    
+    function analyzeOutput(output) {
+        if (!output) return '<div class="text-muted">无输出内容可分析</div>';
+        
+        let analysisHtml = '';
+        
+        // 基本统计
+        const lines = output.split('\n');
+        const totalLines = lines.length;
+        const nonEmptyLines = lines.filter(line => line.trim()).length;
+        const outputSize = output.length;
+        
+        analysisHtml += `
+            <div class="row mb-3 output-stats">
+                <div class="col-md-3">
+                    <div class="card text-center analysis-card">
+                        <div class="card-body py-3">
+                            <h4 class="card-title text-primary mb-1">${totalLines}</h4>
+                            <p class="card-text small text-muted">总行数</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center analysis-card">
+                        <div class="card-body py-3">
+                            <h4 class="card-title text-info mb-1">${nonEmptyLines}</h4>
+                            <p class="card-text small text-muted">有效行数</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center analysis-card">
+                        <div class="card-body py-3">
+                            <h4 class="card-title text-success mb-1">${(outputSize / 1024).toFixed(1)}KB</h4>
+                            <p class="card-text small text-muted">输出大小</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center analysis-card">
+                        <div class="card-body py-3">
+                            <h4 class="card-title text-warning mb-1">${(output.match(/\{[\s\S]*?\}/g) || []).length}</h4>
+                            <p class="card-text small text-muted">JSON对象</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 内容分析
+        const hasErrors = output.toLowerCase().includes('error') || output.toLowerCase().includes('错误');
+        const hasWarnings = output.toLowerCase().includes('warning') || output.toLowerCase().includes('警告');
+        const hasSuccess = output.toLowerCase().includes('success') || output.toLowerCase().includes('成功');
+        const hasJSON = output.includes('{') && output.includes('}');
+        
+        analysisHtml += '<div class="mb-3"><h6>内容特征:</h6><div class="row">';
+        
+        const features = [
+            { label: '包含错误', value: hasErrors, class: hasErrors ? 'danger' : 'secondary' },
+            { label: '包含警告', value: hasWarnings, class: hasWarnings ? 'warning' : 'secondary' },
+            { label: '包含成功信息', value: hasSuccess, class: hasSuccess ? 'success' : 'secondary' },
+            { label: '包含JSON数据', value: hasJSON, class: hasJSON ? 'info' : 'secondary' }
+        ];
+        
+        features.forEach(feature => {
+            analysisHtml += `
+                <div class="col-md-6 mb-2">
+                    <span class="feature-badge bg-${feature.class} text-white">
+                        <i class="bi ${feature.value ? 'bi-check-circle' : 'bi-x-circle'} me-1"></i>
+                        ${feature.label}: ${feature.value ? '是' : '否'}
+                    </span>
+                </div>
+            `;
+        });
+        
+        analysisHtml += '</div></div>';
+        
+        // 关键词频率分析
+        const keywords = ['success', '成功', 'error', '错误', 'warning', '警告', 'complete', '完成', 'failed', '失败'];
+        const keywordCounts = {};
+        keywords.forEach(keyword => {
+            const regex = new RegExp(keyword, 'gi');
+            const matches = output.match(regex);
+            if (matches) {
+                keywordCounts[keyword] = matches.length;
+            }
+        });
+        
+        if (Object.keys(keywordCounts).length > 0) {
+            analysisHtml += '<div class="mb-3"><h6><i class="bi bi-bar-chart me-2"></i>关键词统计:</h6><div class="d-flex flex-wrap">';
+            Object.entries(keywordCounts).forEach(([keyword, count]) => {
+                const badgeClass = keyword.toLowerCase().includes('error') || keyword.includes('错误') || keyword.includes('失败') ? 'danger' : 
+                                  keyword.toLowerCase().includes('warning') || keyword.includes('警告') ? 'warning' : 'success';
+                analysisHtml += `<span class="keyword-badge badge bg-${badgeClass} me-2 mb-1">${keyword}: ${count}</span>`;
+            });
+            analysisHtml += '</div></div>';
+        }
+        
+        return analysisHtml;
+    }
+    
     function getStatusBadgeClass(status) {
         const statusMap = {
             'pending': 'bg-secondary',
@@ -717,6 +1168,17 @@
             hour: '2-digit',
             minute: '2-digit'
         });
+    }
+    
+    function showDetailedOutput() {
+        const detailedRow = document.getElementById('detailedOutputRow');
+        if (detailedRow.style.display === 'none') {
+            detailedRow.style.display = 'block';
+            // 滚动到详细输出区域
+            detailedRow.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            detailedRow.style.display = 'none';
+        }
     }
     
     function showError(message) {

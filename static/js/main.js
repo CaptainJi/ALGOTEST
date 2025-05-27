@@ -112,6 +112,29 @@ async function fetchAPI(url, options = {}) {
     }
 }
 
+/**
+ * 统一的错误消息提取函数
+ * @param {Object} data - API响应数据
+ * @param {string} defaultMessage - 默认错误消息
+ * @returns {string} - 错误消息
+ */
+function extractErrorMessage(data, defaultMessage = '未知错误') {
+    return data.error || data.detail || data.message || defaultMessage;
+}
+
+/**
+ * 统一的API错误处理函数
+ * @param {Response} response - Fetch响应对象
+ * @returns {Promise} - 处理后的响应数据或抛出错误
+ */
+async function handleAPIResponse(response) {
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.message || `HTTP error ${response.status}`);
+    }
+    return response.json();
+}
+
 // 初始化代码
 document.addEventListener('DOMContentLoaded', function() {
     // 处理移动视图下的侧边栏折叠
@@ -120,5 +143,39 @@ document.addEventListener('DOMContentLoaded', function() {
         sidebarToggle.addEventListener('click', function() {
             document.querySelector('.sidebar').classList.toggle('show');
         });
+    }
+    
+    // 处理子菜单的展开/收起
+    const submenuToggles = document.querySelectorAll('[data-bs-toggle="collapse"]');
+    submenuToggles.forEach(toggle => {
+        toggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('data-bs-target'));
+            const chevron = this.querySelector('.bi-chevron-down');
+            
+            if (target.classList.contains('show')) {
+                target.classList.remove('show');
+                this.setAttribute('aria-expanded', 'false');
+                if (chevron) chevron.style.transform = 'rotate(0deg)';
+            } else {
+                target.classList.add('show');
+                this.setAttribute('aria-expanded', 'true');
+                if (chevron) chevron.style.transform = 'rotate(180deg)';
+            }
+        });
+    });
+    
+    // 确保当前页面的子菜单保持展开状态
+    const currentPath = window.location.pathname;
+    if (currentPath.includes('/tasks') || currentPath.includes('/documents') || currentPath.includes('/testcases')) {
+        const taskSubmenu = document.getElementById('taskSubmenu');
+        const taskToggle = document.querySelector('[data-bs-target="#taskSubmenu"]');
+        const chevron = taskToggle?.querySelector('.bi-chevron-down');
+        
+        if (taskSubmenu && taskToggle) {
+            taskSubmenu.classList.add('show');
+            taskToggle.setAttribute('aria-expanded', 'true');
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
+        }
     }
 }); 

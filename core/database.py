@@ -44,13 +44,28 @@ class TestTask(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(String(50), unique=True, index=True)
-    document_id = Column(String(50), index=True, nullable=True)  # 添加文档ID字段
+    document_id = Column(String(50), index=True, nullable=True)  # 文档ID
     requirement_doc = Column(Text)
+    description = Column(Text, nullable=True)  # 任务描述
+    
+    # 算法镜像配置
     algorithm_image = Column(String(255))
-    dataset_url = Column(String(255), nullable=True)  # 数据集URL
     container_name = Column(String(255), nullable=True)  # 容器名称
+    
+    # 数据集配置
+    dataset_url = Column(String(255), nullable=True)  # 数据集路径
+    dataset_type = Column(String(20), default="local")  # 数据集类型：local, url, s3, ftp
+    dataset_format = Column(String(20), nullable=True)  # 数据格式：json, csv, xml, txt, binary
+    
+    # 挂载路径配置
+    container_data_path = Column(String(255), default="/data")  # 容器内数据路径
+    
+    # 容器配置
+    container_config = Column(Text, nullable=True)  # 容器配置（JSON格式）
+    
+    # 其他字段
     document_hash = Column(String(32), nullable=True)  # 文档MD5哈希值，用于检测重复文档
-    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    status = Column(String(20), default="created")  # created, preparing, executing, completed, failed
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -70,10 +85,12 @@ class TestCase(Base):
     test_data = Column(String(500), nullable=True)  # 添加test_data字段，用于存储测试图片路径
     
     # 从TestResult表移过来的字段
-    actual_output = Column(Text, nullable=True)  # 实际输出结果
+    actual_output = Column(Text, nullable=True)  # 实际输出结果（保留向后兼容）
+    execution_result = Column(JSON, nullable=True)  # 结构化执行结果
     result_analysis = Column(Text, nullable=True) # 结果分析
     is_passed = Column(Boolean, default=False)   # 是否通过测试
     status = Column(String(20), default="pending")  # pending, running, completed, failed
+    execution_time = Column(Integer, nullable=True)  # 执行时间（毫秒）
     
     created_at = Column(DateTime, default=datetime.now)
     

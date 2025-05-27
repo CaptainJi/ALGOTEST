@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>输出格式化测试</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        /* 输出格式化样式 */
+        .output-formatted {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .output-formatted pre {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            margin: 0;
+            overflow-x: auto;
+        }
+        
+        .analysis-card {
+            transition: all 0.3s ease;
+        }
+        
+        .analysis-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .output-section {
+            border-left: 4px solid #007bff;
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .output-section.error {
+            border-left-color: #dc3545;
+        }
+        
+        .output-section.warning {
+            border-left-color: #ffc107;
+        }
+        
+        .output-section.success {
+            border-left-color: #28a745;
+        }
+        
+        .json-container {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+        
+        .json-header {
+            background: #e9ecef;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        
+        .json-body {
+            padding: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .time-badge {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin: 0.125rem;
+        }
+        
+        .error-line {
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        
+        .warning-line {
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        
+        .important-line {
+            padding: 0.375rem 0.75rem;
+            margin: 0.125rem 0;
+            background-color: #f8f9fa;
+            border-left: 3px solid #28a745;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">输出格式化测试</h1>
+        
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="outputTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="formatted-tab" data-bs-toggle="tab" data-bs-target="#formatted" type="button" role="tab">格式化视图</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button" role="tab">原始输出</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" data-bs-target="#analysis" type="button" role="tab">结果分析</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="outputTabContent">
+                    <div class="tab-pane fade show active" id="formatted" role="tabpanel">
+                        <div id="formattedOutput"></div>
+                    </div>
+                    <div class="tab-pane fade" id="raw" role="tabpanel">
+                        <pre class="mb-0" style="max-height: 400px; overflow-y: auto;"><code id="rawOutput"></code></pre>
+                    </div>
+                    <div class="tab-pane fade" id="analysis" role="tabpanel">
+                        <div id="analysisOutput"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 测试数据
+        const testOutput = `
+STDOUT:
+{"success": true, "original_success": true, "error": null, "is_alert": false, "detected_objects": 1, "processing_time": 1250}
+执行时间: 1250ms
+警告: 检测到低置信度对象
+错误: 无法连接到数据库
+成功: 算法执行完成
+完成: 测试用例执行成功
+结果: 检测到1个对象
+DEBUG: 调试信息
+INFO: 系统信息
+        `;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function formatOutput(output) {
+            if (!output) return '<div class="text-muted">无输出内容</div>';
+            
+            let formattedHtml = '';
+            
+            // 尝试提取和格式化JSON数据
+            const jsonMatches = output.match(/\{[\s\S]*?\}/g);
+            if (jsonMatches) {
+                formattedHtml += '<div class="mb-3 output-section"><h6 class="text-primary"><i class="bi bi-code-square me-2"></i>检测到的JSON数据:</h6>';
+                jsonMatches.forEach((jsonStr, index) => {
+                    try {
+                        const jsonObj = JSON.parse(jsonStr);
+                        formattedHtml += `
+                            <div class="json-container mb-2">
+                                <div class="json-header">
+                                    JSON对象 ${index + 1}
+                                </div>
+                                <div class="json-body">
+                                    <pre class="mb-0 output-formatted"><code class="language-json">${JSON.stringify(jsonObj, null, 2)}</code></pre>
+                                </div>
+                            </div>
+                        `;
+                    } catch (e) {
+                        formattedHtml += `
+                            <div class="alert alert-warning py-2 mb-2">
+                                <small><i class="bi bi-exclamation-triangle me-1"></i>无效的JSON格式: ${escapeHtml(jsonStr.substring(0, 100))}...</small>
+                            </div>
+                        `;
+                    }
+                });
+                formattedHtml += '</div>';
+            }
+            
+            // 分析执行时间
+            const timeMatches = output.match(/(\d+(?:\.\d+)?)\s*(ms|毫秒|milliseconds?)/gi);
+            if (timeMatches) {
+                formattedHtml += '<div class="mb-3 output-section"><h6 class="text-info"><i class="bi bi-stopwatch me-2"></i>执行时间信息:</h6>';
+                formattedHtml += '<div class="d-flex flex-wrap">';
+                timeMatches.forEach((timeStr, index) => {
+                    formattedHtml += `<span class="time-badge">${escapeHtml(timeStr)}</span>`;
+                });
+                formattedHtml += '</div></div>';
+            }
+            
+            // 分析错误和警告
+            const lines = output.split('\n');
+            const errors = lines.filter(line => 
+                line.toLowerCase().includes('error') || 
+                line.toLowerCase().includes('错误') ||
+                line.toLowerCase().includes('exception') ||
+                line.toLowerCase().includes('failed')
+            );
+            const warnings = lines.filter(line => 
+                line.toLowerCase().includes('warning') || 
+                line.toLowerCase().includes('警告') ||
+                line.toLowerCase().includes('warn')
+            );
+            
+            if (errors.length > 0) {
+                formattedHtml += '<div class="mb-3 output-section error"><h6 class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>错误信息:</h6>';
+                errors.forEach(error => {
+                    formattedHtml += `<div class="error-line">${escapeHtml(error)}</div>`;
+                });
+                formattedHtml += '</div>';
+            }
+            
+            if (warnings.length > 0) {
+                formattedHtml += '<div class="mb-3 output-section warning"><h6 class="text-warning"><i class="bi bi-exclamation-circle me-2"></i>警告信息:</h6>';
+                warnings.forEach(warning => {
+                    formattedHtml += `<div class="warning-line">${escapeHtml(warning)}</div>`;
+                });
+                formattedHtml += '</div>';
+            }
+            
+            // 显示关键输出行
+            const importantLines = lines.filter(line => {
+                const lower = line.toLowerCase();
+                return lower.includes('success') || 
+                       lower.includes('成功') ||
+                       lower.includes('complete') ||
+                       lower.includes('完成') ||
+                       lower.includes('result') ||
+                       lower.includes('结果') ||
+                       (line.trim() && !lower.includes('debug') && !lower.includes('info'));
+            });
+            
+            if (importantLines.length > 0) {
+                formattedHtml += '<div class="mb-3 output-section success"><h6 class="text-success"><i class="bi bi-check-circle me-2"></i>关键输出:</h6>';
+                importantLines.slice(0, 10).forEach(line => {
+                    if (line.trim()) {
+                        formattedHtml += `<div class="important-line">${escapeHtml(line)}</div>`;
+                    }
+                });
+                if (importantLines.length > 10) {
+                    formattedHtml += `<div class="text-muted mt-2"><small><i class="bi bi-three-dots me-1"></i>还有 ${importantLines.length - 10} 行关键输出</small></div>`;
+                }
+                formattedHtml += '</div>';
+            }
+            
+            return formattedHtml || '<div class="text-muted">无法解析输出内容</div>';
+        }
+        
+        function analyzeOutput(output) {
+            if (!output) return '<div class="text-muted">无输出内容可分析</div>';
+            
+            let analysisHtml = '';
+            
+            // 基本统计
+            const lines = output.split('\n');
+            const totalLines = lines.length;
+            const nonEmptyLines = lines.filter(line => line.trim()).length;
+            const outputSize = output.length;
+            
+            analysisHtml += `
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="card text-center analysis-card">
+                            <div class="card-body py-3">
+                                <h4 class="card-title text-primary mb-1">${totalLines}</h4>
+                                <p class="card-text small text-muted">总行数</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center analysis-card">
+                            <div class="card-body py-3">
+                                <h4 class="card-title text-info mb-1">${nonEmptyLines}</h4>
+                                <p class="card-text small text-muted">有效行数</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center analysis-card">
+                            <div class="card-body py-3">
+                                <h4 class="card-title text-success mb-1">${(outputSize / 1024).toFixed(1)}KB</h4>
+                                <p class="card-text small text-muted">输出大小</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center analysis-card">
+                            <div class="card-body py-3">
+                                <h4 class="card-title text-warning mb-1">${(output.match(/\{[\s\S]*?\}/g) || []).length}</h4>
+                                <p class="card-text small text-muted">JSON对象</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 内容分析
+            const hasErrors = output.toLowerCase().includes('error') || output.toLowerCase().includes('错误');
+            const hasWarnings = output.toLowerCase().includes('warning') || output.toLowerCase().includes('警告');
+            const hasSuccess = output.toLowerCase().includes('success') || output.toLowerCase().includes('成功');
+            const hasJSON = output.includes('{') && output.includes('}');
+            
+            analysisHtml += '<div class="mb-3"><h6>内容特征:</h6><div class="row">';
+            
+            const features = [
+                { label: '包含错误', value: hasErrors, class: hasErrors ? 'danger' : 'secondary' },
+                { label: '包含警告', value: hasWarnings, class: hasWarnings ? 'warning' : 'secondary' },
+                { label: '包含成功信息', value: hasSuccess, class: hasSuccess ? 'success' : 'secondary' },
+                { label: '包含JSON数据', value: hasJSON, class: hasJSON ? 'info' : 'secondary' }
+            ];
+            
+            features.forEach(feature => {
+                analysisHtml += `
+                    <div class="col-md-6 mb-2">
+                        <span class="badge bg-${feature.class}">
+                            <i class="bi ${feature.value ? 'bi-check-circle' : 'bi-x-circle'} me-1"></i>
+                            ${feature.label}: ${feature.value ? '是' : '否'}
+                        </span>
+                    </div>
+                `;
+            });
+            
+            analysisHtml += '</div></div>';
+            
+            return analysisHtml;
+        }
+
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('formattedOutput').innerHTML = formatOutput(testOutput);
+            document.getElementById('rawOutput').textContent = testOutput;
+            document.getElementById('analysisOutput').innerHTML = analyzeOutput(testOutput);
+        });
+    </script>
+</body>
+</html> 

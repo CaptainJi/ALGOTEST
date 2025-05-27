@@ -840,7 +840,7 @@
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => response.json())
+        .then(handleAPIResponse)
         .then(data => {
             console.log('容器创建结果:', data);
             
@@ -858,8 +858,9 @@
                 }, 2000);
             } else {
                 // 显示详细错误信息
-                showContainerError(data.error || '容器创建失败');
-                showNotification('danger', `容器创建失败: ${data.error || '未知错误'}`);
+                const errorMsg = extractErrorMessage(data, '容器创建失败');
+                showContainerError(errorMsg);
+                showNotification('danger', `容器创建失败: ${errorMsg}`);
             }
         })
         .catch(error => {
@@ -875,7 +876,7 @@
         
         // 发送API请求检查容器状态
         fetch(`/api/tasks/${taskId}/container-status`)
-        .then(response => response.json())
+        .then(handleAPIResponse)
         .then(data => {
             console.log('容器状态检查结果:', data);
             
@@ -883,8 +884,9 @@
                 showContainerStatus(`容器运行正常 - ${data.status || '状态未知'}`);
                 showNotification('success', '容器状态检查完成');
             } else {
-                showContainerError(data.error || '容器状态检查失败');
-                showNotification('warning', `容器状态异常: ${data.error || '未知错误'}`);
+                const errorMsg = extractErrorMessage(data, '容器状态检查失败');
+                showContainerError(errorMsg);
+                showNotification('warning', `容器状态异常: ${errorMsg}`);
             }
         })
         .catch(error => {
@@ -909,7 +911,7 @@
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => response.json())
+        .then(handleAPIResponse)
         .then(data => {
             console.log('容器删除结果:', data);
             
@@ -921,8 +923,9 @@
                     window.location.reload();
                 }, 1500);
             } else {
-                showContainerError(data.error || '容器删除失败');
-                showNotification('danger', `容器删除失败: ${data.error || '未知错误'}`);
+                const errorMsg = extractErrorMessage(data, '容器删除失败');
+                showContainerError(errorMsg);
+                showNotification('danger', `容器删除失败: ${errorMsg}`);
             }
         })
         .catch(error => {

@@ -78,6 +78,40 @@ header.navbar {
     vertical-align: -2px;
 }
 
+/* 子菜单样式 */
+.sidebar .nav-link[data-bs-toggle="collapse"] {
+    position: relative;
+}
+
+.sidebar .nav-link[data-bs-toggle="collapse"] .bi-chevron-down {
+    transition: transform var(--animation-timing);
+    font-size: 0.9rem;
+}
+
+.sidebar .nav-link[data-bs-toggle="collapse"][aria-expanded="true"] .bi-chevron-down {
+    transform: rotate(180deg);
+}
+
+.sidebar .collapse .nav-link {
+    padding: 0.6rem 1rem;
+    margin: 1px 10px;
+    font-size: 0.9rem;
+    color: #6c757d;
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.sidebar .collapse .nav-link:hover {
+    background-color: rgba(75, 108, 183, 0.08);
+    color: #4b6cb7;
+    transform: translateX(2px);
+}
+
+.sidebar .collapse .nav-link.active {
+    background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(27, 36, 72, 0.2);
+}
+
 /* 主内容区样式 */
 main {
     padding-top: 1.5rem;

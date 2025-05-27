@@ -991,7 +991,40 @@ async def save_result(state: ExecutionState) -> ExecutionState:
             if case:
                 # 更新分析结果
                 case.result_analysis = "\n".join(result_analysis)
-                # 更新原始输出
+                # 保存结构化执行结果
+                case.execution_result = {
+                    "success": success,
+                    "original_success": original_success,
+                    "error_detected": error_detected,
+                    "execution_time": execution_time,
+                    "error": error_description if not success else None,
+                    "error_messages": error_messages,
+                    "ai_analysis": ai_analysis,
+                    "analysis_report": analysis_report,
+                    "raw_outputs": [
+                        {
+                            "type": "stdout",
+                            "content": result.get("raw_stdout", ""),
+                            "formatted": True
+                        } for result in all_results if result.get("raw_stdout")
+                    ] + [
+                        {
+                            "type": "stderr", 
+                            "content": result.get("raw_stderr", ""),
+                            "formatted": True
+                        } for result in all_results if result.get("raw_stderr")
+                    ],
+                    "full_outputs": [
+                        {
+                            "content": result.get("full_output", ""),
+                            "formatted": True
+                        } for result in all_results if result.get("full_output")
+                    ],
+                    "results": serializable_results
+                }
+                # 更新执行时间
+                case.execution_time = execution_time
+                # 保留向后兼容的原始输出（简化版本）
                 case.actual_output = "\n\n".join(raw_output)
                 db.commit()
         
