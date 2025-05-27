@@ -88,6 +88,55 @@
         </div>
     </div>
 </div>
+
+<!-- 测试数据配置模态框 -->
+<div class="modal fade" id="testDataConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-gear me-2"></i>配置测试数据
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testDataConfigForm">
+                    <input type="hidden" id="configCaseId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">测试用例</label>
+                        <input type="text" class="form-control" id="configCaseName" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="testDataPath" class="form-label">测试数据路径 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="testDataPath" 
+                               placeholder="例如：/data/images/test1.jpg 或 images/test1.jpg" required>
+                        <div class="form-text">
+                            相对于数据集根目录的路径，或绝对路径
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">数据集根目录</label>
+                        <input type="text" class="form-control" id="datasetRootPath" readonly>
+                        <div class="form-text">
+                            当前任务配置的数据集路径
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveTestDataConfig()">
+                    <i class="bi bi-save me-1"></i>保存配置
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -259,13 +308,24 @@
                 </li>
                 <li class="list-group-item d-flex flex-column">
                     <span class="fw-bold mb-2">
-                        <i class="bi bi-database me-1"></i> 数据集路径
+                        <i class="bi bi-database me-1"></i> 数据集配置
                     </span>
-                    <div class="d-flex align-items-center ${task.dataset_url ? 'text-success' : 'text-muted'}">
+                    <div class="d-flex align-items-center ${task.dataset_url ? 'text-success' : 'text-muted'} mb-1">
                         ${task.dataset_url ? 
                             `<i class="bi bi-check-circle me-1"></i> <code class="text-success">${datasetUrl}</code>` :
                             `<i class="bi bi-exclamation-circle me-1"></i> ${datasetUrl}`
                         }
+                    </div>
+                    ${task.dataset_type ? `<small class="text-muted">类型: ${task.dataset_type}</small>` : ''}
+                    ${task.dataset_format ? `<small class="text-muted d-block">格式: ${task.dataset_format}</small>` : ''}
+                </li>
+                <li class="list-group-item d-flex flex-column">
+                    <span class="fw-bold mb-2">
+                        <i class="bi bi-folder2-open me-1"></i> 挂载路径
+                    </span>
+                    <div class="d-flex align-items-center text-info">
+                        <i class="bi bi-info-circle me-1"></i> 
+                        <code class="text-info">${task.container_data_path || '/data'}</code>
                     </div>
                 </li>
                 <li class="list-group-item d-flex flex-column">
@@ -448,7 +508,10 @@
     }
 
     function loadTestCases(documentId) {
-        if (!documentId) {
+        // 优先使用task_id查询，如果没有则使用document_id
+        const queryParam = taskId ? `task_id=${taskId}` : (documentId ? `document_id=${documentId}` : '');
+        
+        if (!queryParam) {
             const container = document.getElementById('testCasesContainer');
             container.innerHTML = `
                 <div class="alert alert-info m-3">
@@ -460,7 +523,7 @@
         }
         
         // 获取测试用例
-        fetch(`/api/testcases?document_id=${documentId}`)
+        fetch(`/api/testcases?${queryParam}`)
             .then(response => response.json())
             .then(data => {
                 testCases = data.test_cases || [];
@@ -491,11 +554,12 @@
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>名称</th>
-                            <th>测试目的</th>
-                            <th>状态</th>
-                            <th>操作</th>
+                            <th style="width: 12%">ID</th>
+                            <th style="width: 20%">名称</th>
+                            <th style="width: 25%">测试目的</th>
+                            <th style="width: 20%">测试数据</th>
+                            <th style="width: 10%">状态</th>
+                            <th style="width: 13%">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -505,7 +569,19 @@
                                     <span class="badge bg-light text-dark">${testCase.id ? testCase.id.substring(0, 8) : '未知ID'}</span>
                                 </td>
                                 <td>${testCase.name}</td>
-                                <td>${truncateText(testCase.purpose, 50)}</td>
+                                <td>${truncateText(testCase.purpose, 40)}</td>
+                                <td>
+                                    <div class="test-data-cell">
+                                        ${testCase.test_data ? 
+                                            `<span class="badge bg-success small" title="${testCase.test_data}">
+                                                <i class="bi bi-check-circle me-1"></i>已配置
+                                            </span>` :
+                                            `<button class="btn btn-outline-warning btn-sm" onclick="configTestData('${testCase.id}', '${testCase.name}')">
+                                                <i class="bi bi-gear-fill"></i> 配置
+                                            </button>`
+                                        }
+                                    </div>
+                                </td>
                                 <td>
                                     <span class="badge ${getCaseStatusBadge(testCase.status)}">
                                         ${getCaseStatusText(testCase.status)}
@@ -513,12 +589,13 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="/testcases/${testCase.id}" class="btn btn-outline-primary">
+                                        <a href="/testcases/${testCase.id}" class="btn btn-outline-primary" title="查看详情">
                                             <i class="bi bi-eye"></i>
                                         </a>
                                         <button class="btn btn-outline-success" 
                                             onclick="executeSingleTest('${testCase.id}')"
-                                            ${taskData && taskData.status === 'executing' ? 'disabled' : ''}>
+                                            ${taskData && taskData.status === 'executing' || !testCase.test_data ? 'disabled' : ''}
+                                            title="${!testCase.test_data ? '请先配置测试数据' : '执行测试'}">
                                             <i class="bi bi-play-fill"></i>
                                         </button>
                                     </div>
@@ -706,6 +783,39 @@
             'failed': 'bi bi-exclamation-triangle'
         };
         return iconMap[status] || 'bi bi-question-circle';
+    }
+
+    function getStatusBadgeClass(status) {
+        const statusMap = {
+            'created': 'bg-secondary',
+            'preparing': 'bg-info',
+            'executing': 'bg-primary',
+            'completed': 'bg-success',
+            'failed': 'bg-danger'
+        };
+        return statusMap[status] || 'bg-secondary';
+    }
+
+    function getStatusText(status) {
+        const statusMap = {
+            'created': '已创建',
+            'preparing': '准备中',
+            'executing': '执行中',
+            'completed': '已完成',
+            'failed': '失败'
+        };
+        return statusMap[status] || status;
+    }
+
+    function handleAPIResponse(response) {
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+        return response.json();
+    }
+
+    function extractErrorMessage(data, defaultMessage) {
+        return data.error || data.message || defaultMessage;
     }
 
     function getCaseStatusBadge(status) {
@@ -973,6 +1083,81 @@
         if (statusAlert) {
             statusAlert.style.display = 'none';
         }
+    }
+    
+    // 测试数据配置相关函数
+    function configTestData(caseId, caseName) {
+        // 填充模态框数据
+        document.getElementById('configCaseId').value = caseId;
+        document.getElementById('configCaseName').value = caseName;
+        document.getElementById('datasetRootPath').value = taskData.dataset_url || '未配置';
+        
+        // 获取当前测试用例的测试数据
+        const testCase = testCases.find(tc => tc.id === caseId);
+        if (testCase && testCase.test_data) {
+            document.getElementById('testDataPath').value = testCase.test_data;
+        } else {
+            document.getElementById('testDataPath').value = '';
+        }
+        
+        // 显示模态框
+        const modal = new bootstrap.Modal(document.getElementById('testDataConfigModal'));
+        modal.show();
+    }
+    
+    function saveTestDataConfig() {
+        const caseId = document.getElementById('configCaseId').value;
+        const testDataPath = document.getElementById('testDataPath').value.trim();
+        
+        if (!testDataPath) {
+            showNotification('warning', '请输入测试数据路径');
+            return;
+        }
+        
+        // 显示加载状态
+        const saveBtn = document.querySelector('#testDataConfigModal .btn-primary');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>保存中...';
+        saveBtn.disabled = true;
+        
+        // 发送API请求更新测试数据
+        fetch(`/api/tasks/${taskId}/test-data`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                updates: [{
+                    case_id: caseId,
+                    test_data: testDataPath
+                }]
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                // 关闭模态框
+                const modal = bootstrap.Modal.getInstance(document.getElementById('testDataConfigModal'));
+                modal.hide();
+                
+                // 显示成功消息
+                showNotification('success', '测试数据配置已保存');
+                
+                // 刷新测试用例列表
+                loadTestCases(taskData.document_id);
+            } else {
+                throw new Error(data.error || '保存失败');
+            }
+        })
+        .catch(error => {
+            console.error('保存测试数据配置失败:', error);
+            showNotification('danger', `保存测试数据配置失败: ${error.message}`);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        });
     }
 </script>
 {% endblock %} 
