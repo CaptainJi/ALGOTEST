@@ -495,11 +495,17 @@
                         </div>
                     </td>
                     <td>
-                        <span class="badge bg-light text-dark">
-                            ${testCase.case_id ? testCase.case_id.substring(0, 8) : '未知ID'}
-                        </span>
+                        <a href="/testcases/${testCase.case_id}" class="text-decoration-none">
+                            <span class="badge bg-light text-dark">
+                                ${testCase.case_id ? testCase.case_id.substring(0, 8) : '未知ID'}
+                            </span>
+                        </a>
                     </td>
-                    <td>${testCase.name || '未命名测试用例'}</td>
+                    <td>
+                        <a href="/testcases/${testCase.case_id}" class="text-decoration-none">
+                            ${testCase.name || '未命名测试用例'}
+                        </a>
+                    </td>
                     <td>${testCase.purpose || '-'}</td>
                     <td>
                         <small class="text-muted">

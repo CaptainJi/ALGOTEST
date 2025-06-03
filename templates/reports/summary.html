@@ -2,6 +2,17 @@
 
 {% block page_title %}测试报告{% endblock %}
 
+{% block page_actions %}
+<div class="btn-group">
+    <button type="button" class="btn btn-outline-primary" id="batchAnalysisBtn" disabled>
+        <i class="bi bi-brain me-1"></i> 批量智能分析
+    </button>
+    <button type="button" class="btn btn-outline-info" id="selectAllBtn">
+        <i class="bi bi-check-all me-1"></i> 全选/取消
+    </button>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="container">
     <div class="row">
@@ -9,6 +20,7 @@
             <div class="card">
                 <div class="card-header">
                     <i class="bi bi-file-earmark-spreadsheet me-2"></i>测试报告列表
+                    <small class="text-muted ms-2">选择已完成的任务进行批量智能分析</small>
                 </div>
                 <div class="card-body">
                     <div id="reportsContainer">
@@ -24,12 +36,81 @@
         </div>
     </div>
 </div>
+
+<!-- 批量分析进度模态框 -->
+<div class="modal fade" id="batchAnalysisModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批量智能分析进度</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" id="closeModalBtn"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>总体进度</span>
+                        <span id="overallProgress">0/0</span>
+                    </div>
+                    <div class="progress mb-3">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" id="overallProgressBar"></div>
+                    </div>
+                </div>
+                
+                <div id="analysisResults">
+                    <!-- 分析结果将在这里显示 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="closeModal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    let selectedTasks = new Set();
+    let completedTasks = [];
+    let batchAnalysisModal = null;
+    let isAnalyzing = false;
+    
     document.addEventListener('DOMContentLoaded', function() {
+        // 初始化模态框
+        batchAnalysisModal = new bootstrap.Modal(document.getElementById('batchAnalysisModal'));
+        
         loadTasks();
+        
+        // 绑定批量分析按钮事件
+        document.getElementById('batchAnalysisBtn').addEventListener('click', function() {
+            if (selectedTasks.size > 0 && !isAnalyzing) {
+                startBatchAnalysis();
+            }
+        });
+        
+        // 绑定全选按钮事件
+        document.getElementById('selectAllBtn').addEventListener('click', function() {
+            const allSelected = selectedTasks.size === completedTasks.length && completedTasks.length > 0;
+            
+            if (allSelected) {
+                // 取消全选
+                selectedTasks.clear();
+                document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+            } else {
+                // 全选
+                selectedTasks.clear();
+                completedTasks.forEach(task => {
+                    selectedTasks.add(task.task_id);
+                });
+                document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+            }
+            
+            updateBatchAnalysisButton();
+        });
     });
     
     function loadTasks() {
@@ -48,7 +129,7 @@
         const container = document.getElementById('reportsContainer');
         
         // 过滤已完成的任务作为报告
-        const completedTasks = tasks.filter(task => 
+        completedTasks = tasks.filter(task => 
             task.status === 'completed' && task.test_cases_count > 0
         );
         
@@ -75,12 +156,21 @@
                     task: task,
                     reports: data.reports || []
                 }))
+                .catch(error => ({
+                    task: task,
+                    reports: []
+                }))
         )).then(tasksWithReports => {
             container.innerHTML = `
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
                             <tr>
+                                <th width="40px">
+                                    <div class="form-check">
+                                        <input class="form-check-input visually-hidden" type="checkbox" disabled>
+                                    </div>
+                                </th>
                                 <th>任务ID</th>
                                 <th>文档ID</th>
                                 <th>测试用例数</th>
@@ -92,14 +182,36 @@
                         <tbody>
                             ${tasksWithReports.map(({task, reports}) => `
                                 <tr>
-                                    <td>${task.task_id}</td>
+                                    <td>
+                                        <div class="form-check">
+                                            <input class="form-check-input task-checkbox" 
+                                                   type="checkbox" 
+                                                   value="${task.task_id}"
+                                                   onchange="toggleTaskSelection('${task.task_id}', this.checked)">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <a href="/tasks/${task.task_id}" class="text-decoration-none">
+                                            <span class="badge bg-light text-dark">
+                                                ${task.task_id.substring(0, 8)}
+                                            </span>
+                                        </a>
+                                    </td>
                                     <td>
                                         ${task.document_id ? 
-                                            `<a href="/documents/${task.document_id}">${task.document_id.substring(0, 8)}</a>` : 
-                                            '未关联文档'
+                                            `<a href="/documents/${task.document_id}" class="text-decoration-none">
+                                                <span class="badge bg-info text-white">
+                                                    ${task.document_id.substring(0, 8)}
+                                                </span>
+                                            </a>` : 
+                                            '<span class="text-muted">未关联文档</span>'
                                         }
                                     </td>
-                                    <td>${task.test_cases_count || 0}</td>
+                                    <td>
+                                        <span class="badge bg-primary">
+                                            ${task.test_cases_count || 0}
+                                        </span>
+                                    </td>
                                     <td>
                                         ${reports.length > 0 ? 
                                             `<div class="small text-muted">
@@ -127,6 +239,10 @@
                                                 </a>` : 
                                                 ''
                                             }
+                                            <button type="button" class="btn btn-outline-info"
+                                                    onclick="analyzeTask('${task.task_id}')">
+                                                <i class="bi bi-brain me-1"></i>分析
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -135,7 +251,183 @@
                     </table>
                 </div>
             `;
+            
+            updateBatchAnalysisButton();
         });
+    }
+    
+    function toggleTaskSelection(taskId, isSelected) {
+        if (isSelected) {
+            selectedTasks.add(taskId);
+        } else {
+            selectedTasks.delete(taskId);
+        }
+        updateBatchAnalysisButton();
+    }
+    
+    function updateBatchAnalysisButton() {
+        const batchAnalysisBtn = document.getElementById('batchAnalysisBtn');
+        batchAnalysisBtn.disabled = selectedTasks.size === 0 || isAnalyzing;
+        
+        // 更新按钮文本
+        if (selectedTasks.size > 0) {
+            batchAnalysisBtn.innerHTML = `<i class="bi bi-brain me-1"></i> 批量智能分析 (${selectedTasks.size})`;
+        } else {
+            batchAnalysisBtn.innerHTML = `<i class="bi bi-brain me-1"></i> 批量智能分析`;
+        }
+    }
+    
+    async function startBatchAnalysis() {
+        if (selectedTasks.size === 0) return;
+        
+        isAnalyzing = true;
+        updateBatchAnalysisButton();
+        
+        // 显示进度模态框
+        batchAnalysisModal.show();
+        
+        const selectedTasksArray = Array.from(selectedTasks);
+        const totalTasks = selectedTasksArray.length;
+        
+        // 初始化进度显示
+        document.getElementById('overallProgress').textContent = `0/${totalTasks}`;
+        document.getElementById('overallProgressBar').style.width = '0%';
+        document.getElementById('analysisResults').innerHTML = '';
+        
+        // 禁用关闭按钮
+        document.getElementById('closeModalBtn').disabled = true;
+        document.getElementById('closeModal').disabled = true;
+        
+        try {
+            // 使用批量分析API
+            showNotification('info', '正在启动批量智能分析...');
+            
+            const response = await fetch('/api/tasks/batch-intelligent-analysis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    task_ids: selectedTasksArray
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // 显示详细结果
+                const resultsDiv = document.getElementById('analysisResults');
+                
+                result.results.forEach((taskResult, index) => {
+                    const taskCardId = `task-card-${taskResult.task_id}`;
+                    const cardClass = taskResult.success ? 'border-success' : 'border-danger';
+                    const iconClass = taskResult.success ? 'bi-check-circle text-success' : 'bi-x-circle text-danger';
+                    const statusText = taskResult.success ? '分析完成' : '分析失败';
+                    
+                    resultsDiv.innerHTML += `
+                        <div class="card mb-2 ${cardClass}" id="${taskCardId}">
+                            <div class="card-body py-2">
+                                <div class="d-flex align-items-center">
+                                    <i class="bi ${iconClass} me-2"></i>
+                                    <span class="me-auto">
+                                        <strong>[${index + 1}/${totalTasks}]</strong> 
+                                        任务 ${taskResult.task_id.substring(0, 8)} ${statusText}
+                                    </span>
+                                    <small class="text-muted">
+                                        ${taskResult.success ? 
+                                            `分析了 ${taskResult.analyzed_cases || 0} 个用例` : 
+                                            taskResult.error
+                                        }
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                // 更新进度条
+                document.getElementById('overallProgress').textContent = `${totalTasks}/${totalTasks}`;
+                document.getElementById('overallProgressBar').style.width = '100%';
+                
+                // 添加总结
+                resultsDiv.innerHTML += `
+                    <div class="alert alert-success mt-3">
+                        <i class="bi bi-check-circle me-2"></i>
+                        批量智能分析完成！成功: ${result.successful_count}，失败: ${result.failed_count}
+                    </div>
+                `;
+                
+                showNotification('success', result.message);
+            } else {
+                throw new Error(result.message || '批量分析失败');
+            }
+            
+        } catch (error) {
+            console.error('批量分析失败:', error);
+            
+            // 显示错误信息
+            const resultsDiv = document.getElementById('analysisResults');
+            resultsDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    批量分析失败: ${error.message || '未知错误'}
+                </div>
+            `;
+            
+            showNotification('danger', `批量分析失败: ${error.message || '未知错误'}`);
+        }
+        
+        // 分析完成
+        isAnalyzing = false;
+        updateBatchAnalysisButton();
+        
+        // 启用关闭按钮
+        document.getElementById('closeModalBtn').disabled = false;
+        document.getElementById('closeModal').disabled = false;
+        
+        // 清空选择
+        selectedTasks.clear();
+        document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        updateBatchAnalysisButton();
+    }
+    
+
+    async function analyzeTask(taskId) {
+        if (isAnalyzing) return;
+        
+        const btn = document.querySelector(`button[onclick="analyzeTask('${taskId}')"]`);
+        if (!btn) return;
+        
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>分析中...';
+        
+        try {
+            showNotification('info', '正在进行智能分析，请稍候...');
+            
+            const response = await fetch(`/api/tasks/${taskId}/intelligent-analysis`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification('success', `任务 ${taskId.substring(0, 8)} 智能分析完成！分析了 ${result.analyzed_cases || 0} 个测试用例。`);
+            } else {
+                showNotification('danger', `智能分析失败: ${result.message || '未知错误'}`);
+            }
+        } catch (error) {
+            console.error('智能分析失败:', error);
+            showNotification('danger', `智能分析失败: ${error.message || '网络错误'}`);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
 
     function formatDate(timestamp) {
@@ -157,6 +449,27 @@
                 ${message}
             </div>
         `;
+    }
+    
+    function showNotification(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.classList.remove('show');
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 300);
+        }, 5000);
     }
 </script>
 {% endblock %} 

@@ -13,6 +13,9 @@
     <button id="executeBtn" class="btn btn-success">
         <i class="bi bi-play-fill"></i> 执行测试
     </button>
+    <button id="analysisBtn" class="btn btn-info">
+        <i class="bi bi-brain"></i> 智能分析结果
+    </button>
 </div>
 {% endblock %}
 
@@ -199,6 +202,124 @@
         font-style: italic;
     }
     
+    /* AI分析结果样式 */
+    .ai-analysis-section {
+        border-left: 4px solid #0d6efd;
+        padding-left: 16px;
+        background: linear-gradient(90deg, rgba(13, 110, 253, 0.05) 0%, transparent 100%);
+        border-radius: 0 8px 8px 0;
+    }
+    
+    .ai-success-item {
+        padding: 8px 12px;
+        background: rgba(25, 135, 84, 0.1);
+        border-left: 3px solid #198754;
+        border-radius: 4px;
+    }
+    
+    .ai-error-item {
+        padding: 8px 12px;
+        background: rgba(220, 53, 69, 0.1);
+        border-left: 3px solid #dc3545;
+        border-radius: 4px;
+    }
+    
+    .ai-warning-item {
+        padding: 8px 12px;
+        background: rgba(255, 193, 7, 0.1);
+        border-left: 3px solid #ffc107;
+        border-radius: 4px;
+    }
+    
+    .ai-info-item {
+        padding: 8px 12px;
+        background: rgba(13, 202, 240, 0.1);
+        border-left: 3px solid #0dcaf0;
+        border-radius: 4px;
+    }
+    
+    .ai-note-item {
+        padding: 8px 12px;
+        background: rgba(108, 117, 125, 0.1);
+        border-left: 3px solid #6c757d;
+        border-radius: 4px;
+    }
+    
+    .ai-metric-item {
+        padding: 6px 12px;
+        background: rgba(248, 249, 250, 0.8);
+        border-radius: 20px;
+        border: 1px solid #e9ecef;
+        display: inline-block;
+        margin-right: 8px;
+        margin-bottom: 4px;
+    }
+    
+    .ai-sub-item {
+        padding: 4px 8px;
+        background: rgba(248, 249, 250, 0.5);
+        border-radius: 4px;
+    }
+    
+    .ai-confidence {
+        background: rgba(248, 249, 250, 0.8);
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 12px;
+    }
+    
+    .ai-final-result {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 249, 250, 0.9));
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        font-size: 1.1em;
+    }
+    
+    .ai-json-analysis .card {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .ai-json-analysis .card-header {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .analysis-item {
+        transition: background-color 0.2s ease;
+    }
+    
+    .analysis-item:hover {
+        background-color: #e9ecef !important;
+    }
+    
+    /* 动画效果 */
+    .ai-success-item, .ai-error-item, .ai-warning-item, .ai-info-item, .ai-note-item {
+        animation: fadeInLeft 0.3s ease-out;
+    }
+    
+    @keyframes fadeInLeft {
+        from {
+            opacity: 0;
+            transform: translateX(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+        .ai-confidence .d-flex {
+            flex-direction: column;
+            align-items: stretch !important;
+        }
+        
+        .ai-confidence .progress {
+            margin-top: 8px;
+            margin-right: 0 !important;
+        }
+    }
+    
     .analysis-card {
         transition: all 0.3s ease;
     }
@@ -357,6 +478,19 @@
         document.getElementById('clearLogBtn').addEventListener('click', function() {
             document.getElementById('executionLog').innerHTML = '';
         });
+        
+        // 绑定智能分析按钮事件
+        document.getElementById('analysisBtn').addEventListener('click', function() {
+            performIntelligentAnalysis();
+        });
+        
+        // 临时调试：检查按钮是否存在
+        const analysisBtn = document.getElementById('analysisBtn');
+        if (analysisBtn) {
+            console.log('智能分析按钮已找到，当前显示状态:', analysisBtn.style.display);
+        } else {
+            console.error('智能分析按钮未找到！');
+        }
     });
     
     // WebSocket连接管理
@@ -832,10 +966,13 @@
                     </div>
                 </div>
             `;
-        } else if (data.status === 'passed' || data.status === 'failed' || data.status === 'completed') {
+        } else if (data.status === 'passed' || data.status === 'failed' || data.status === 'completed' || data.actual_output) {
             // 对于completed状态，根据is_passed字段判断通过或失败
             let finalStatus = data.status;
             if (data.status === 'completed') {
+                finalStatus = data.is_passed ? 'passed' : 'failed';
+            } else if (data.actual_output && !data.status) {
+                // 如果有输出但状态未设置，根据is_passed判断
                 finalStatus = data.is_passed ? 'passed' : 'failed';
             }
             
@@ -863,6 +1000,8 @@
                 </div>
                 ` : ''}
             `;
+            
+
             
             // 如果有输出，准备详细输出区域
             if (data.actual_output) {
@@ -933,6 +1072,8 @@
                     ` : ''}
                 </div>
             `;
+            
+
         }
     }
     
@@ -969,12 +1110,280 @@
     
     function formatMultilineText(text) {
         if (!text) return '';
+        
+        // 检查是否包含AI分析内容，如果是则使用专门的格式化函数
+        if (text.includes('=== AI智能分析报告 ===') || text.includes('=== 智谱AI专业分析 ===')) {
+            return formatAIAnalysisText(text);
+        }
+        
         return text.split('\n').map(line => {
             if (line.trim()) {
                 return `<p class="mb-1">${line}</p>`;
             }
             return '<br>';
         }).join('');
+    }
+    
+    function formatAIAnalysisText(text) {
+        if (!text) return '';
+        
+        let formattedHtml = '';
+        const lines = text.split('\n');
+        let currentSection = '';
+        let inJsonBlock = false;
+        let jsonContent = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (!line) {
+                formattedHtml += '<br>';
+                continue;
+            }
+            
+            // 检测章节标题
+            if (line.startsWith('=== ') && line.endsWith(' ===')) {
+                currentSection = line;
+                formattedHtml += `
+                    <div class="ai-analysis-section mt-4 mb-3">
+                        <h6 class="text-primary fw-bold">
+                            <i class="bi bi-cpu me-2"></i>${line.replace(/===/g, '').trim()}
+                        </h6>
+                    </div>
+                `;
+                continue;
+            }
+            
+            // 检测JSON代码块开始
+            if (line.startsWith('```json')) {
+                inJsonBlock = true;
+                jsonContent = '';
+                continue;
+            }
+            
+            // 检测JSON代码块结束
+            if (line.startsWith('```') && inJsonBlock) {
+                inJsonBlock = false;
+                try {
+                    const jsonObj = JSON.parse(jsonContent);
+                    formattedHtml += `
+                        <div class="ai-json-analysis mb-3">
+                            <div class="card border-light">
+                                <div class="card-header bg-light py-2">
+                                    <small class="text-muted">
+                                        <i class="bi bi-code-square me-1"></i>AI分析结果（JSON格式）
+                                    </small>
+                                </div>
+                                <div class="card-body p-3">
+                                    ${formatAIJsonResult(jsonObj)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    formattedHtml += `
+                        <div class="alert alert-warning py-2 mb-2">
+                            <small><i class="bi bi-exclamation-triangle me-1"></i>JSON格式错误</small>
+                        </div>
+                    `;
+                }
+                jsonContent = '';
+                continue;
+            }
+            
+            // 如果在JSON块内，收集内容
+            if (inJsonBlock) {
+                jsonContent += line + '\n';
+                continue;
+            }
+            
+            // 检测状态指示符
+            if (line.startsWith('✓ ')) {
+                formattedHtml += `
+                    <div class="ai-success-item mb-2">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        <span>${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('✗ ')) {
+                formattedHtml += `
+                    <div class="ai-error-item mb-2">
+                        <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                        <span>${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('⚠ ')) {
+                formattedHtml += `
+                    <div class="ai-warning-item mb-2">
+                        <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                        <span>${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('📋 ')) {
+                formattedHtml += `
+                    <div class="ai-info-item mb-2">
+                        <i class="bi bi-clipboard-data text-info me-2"></i>
+                        <span class="fw-semibold">${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('📝 ')) {
+                formattedHtml += `
+                    <div class="ai-note-item mb-2">
+                        <i class="bi bi-journal-text text-secondary me-2"></i>
+                        <span class="fst-italic">${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('📊 ') || line.startsWith('⏱️ ')) {
+                formattedHtml += `
+                    <div class="ai-metric-item mb-2">
+                        <span class="me-2">${line.substring(0, 2)}</span>
+                        <span class="text-muted">${line.substring(2)}</span>
+                    </div>
+                `;
+            } else if (line.startsWith('  - ')) {
+                formattedHtml += `
+                    <div class="ai-sub-item mb-1 ms-4">
+                        <i class="bi bi-arrow-right text-muted me-2"></i>
+                        <small>${line.substring(4)}</small>
+                    </div>
+                `;
+            } else if (line.startsWith('置信度:')) {
+                const confidence = line.split(':')[1]?.trim();
+                const confidenceNum = parseFloat(confidence) || 0;
+                const confidencePercent = Math.round(confidenceNum * 100);
+                let confidenceColor = 'success';
+                if (confidencePercent < 70) confidenceColor = 'warning';
+                if (confidencePercent < 50) confidenceColor = 'danger';
+                
+                formattedHtml += `
+                    <div class="ai-confidence mb-3">
+                        <div class="d-flex align-items-center">
+                            <span class="me-2">
+                                <i class="bi bi-speedometer2 text-${confidenceColor}"></i>
+                                置信度:
+                            </span>
+                            <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                <div class="progress-bar bg-${confidenceColor}" role="progressbar" 
+                                     style="width: ${confidencePercent}%" 
+                                     aria-valuenow="${confidencePercent}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    ${confidencePercent}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (line.includes('最终判断:')) {
+                const result = line.split(':')[1]?.trim();
+                const isSuccess = result?.includes('通过') || result?.includes('成功');
+                formattedHtml += `
+                    <div class="ai-final-result mt-3 p-3 border rounded ${isSuccess ? 'border-success bg-success' : 'border-danger bg-danger'} bg-opacity-10">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-${isSuccess ? 'check-circle-fill text-success' : 'x-circle-fill text-danger'} me-2 fs-5"></i>
+                            <span class="fw-bold">${line}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // 普通文本
+                formattedHtml += `<p class="mb-1">${line}</p>`;
+            }
+        }
+        
+        return formattedHtml;
+    }
+    
+    function formatAIJsonResult(jsonObj) {
+        let html = '';
+        
+        // 执行成功状态
+        if (jsonObj.hasOwnProperty('execution_success')) {
+            const success = jsonObj.execution_success;
+            html += `
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-semibold">执行状态:</div>
+                    <div class="col-sm-8">
+                        <span class="badge ${success ? 'bg-success' : 'bg-danger'}">
+                            <i class="bi bi-${success ? 'check' : 'x'}-circle me-1"></i>
+                            ${success ? '成功' : '失败'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 算法输出匹配状态
+        if (jsonObj.algorithm_output) {
+            const output = jsonObj.algorithm_output;
+            html += `
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-semibold">输出匹配:</div>
+                    <div class="col-sm-8">
+                        <span class="badge ${output.matches_expectation ? 'bg-success' : 'bg-warning'}">
+                            <i class="bi bi-${output.matches_expectation ? 'check' : 'exclamation'}-circle me-1"></i>
+                            ${output.matches_expectation ? '符合预期' : '不符合预期'}
+                        </span>
+                        ${output.reason ? `<br><small class="text-muted mt-1 d-block">${output.reason}</small>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 性能问题
+        if (jsonObj.performance_issues) {
+            html += `
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-semibold">性能问题:</div>
+                    <div class="col-sm-8">
+                        <div class="alert alert-warning py-2 mb-0">
+                            <small>${jsonObj.performance_issues.warnings || jsonObj.performance_issues}</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 总体测试结果
+        if (jsonObj.hasOwnProperty('overall_test_passed')) {
+            const passed = jsonObj.overall_test_passed;
+            html += `
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-semibold">测试结果:</div>
+                    <div class="col-sm-8">
+                        <span class="badge ${passed ? 'bg-success' : 'bg-danger'} fs-6">
+                            <i class="bi bi-${passed ? 'check' : 'x'}-circle me-1"></i>
+                            ${passed ? '测试通过' : '测试失败'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 详细分析
+        if (jsonObj.analysis) {
+            html += `
+                <div class="mb-3">
+                    <div class="fw-semibold mb-2">详细分析:</div>
+                    <div class="analysis-details">
+            `;
+            
+            Object.entries(jsonObj.analysis).forEach(([key, value]) => {
+                html += `
+                    <div class="analysis-item mb-2 p-2 bg-light rounded">
+                        <div class="fw-semibold text-primary">${key}</div>
+                        <div class="small text-muted">${value}</div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+        
+        return html;
     }
     
     function escapeHtml(text) {
@@ -1226,6 +1635,73 @@
         } else {
             detailedRow.style.display = 'none';
         }
+    }
+    
+    function performIntelligentAnalysis() {
+        // 显示分析中状态
+        const analysisBtn = document.getElementById('analysisBtn');
+        const originalText = analysisBtn.innerHTML;
+        analysisBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 分析中...';
+        analysisBtn.disabled = true;
+        
+        // 发送智能分析请求
+        fetch(`/api/testcases/${case_id}/intelligent-analysis`, {
+            method: 'POST'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('智能分析完成:', data);
+            
+            // 重新加载测试用例数据以显示最新的分析结果
+            loadTestCaseData();
+            
+            // 显示成功提示
+            const resultContainer = document.getElementById('resultContainer');
+            const successAlert = document.createElement('div');
+            successAlert.className = 'alert alert-success mt-3';
+            successAlert.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>
+                智能分析已完成！分析结果已更新到"结果分析"部分。
+            `;
+            resultContainer.appendChild(successAlert);
+            
+            // 3秒后移除提示
+            setTimeout(() => {
+                if (successAlert.parentNode) {
+                    successAlert.parentNode.removeChild(successAlert);
+                }
+            }, 3000);
+        })
+        .catch(error => {
+            console.error('智能分析失败:', error);
+            
+            // 显示错误提示
+            const resultContainer = document.getElementById('resultContainer');
+            const errorAlert = document.createElement('div');
+            errorAlert.className = 'alert alert-danger mt-3';
+            errorAlert.innerHTML = `
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                智能分析失败: ${error.message}
+            `;
+            resultContainer.appendChild(errorAlert);
+            
+            // 5秒后移除提示
+            setTimeout(() => {
+                if (errorAlert.parentNode) {
+                    errorAlert.parentNode.removeChild(errorAlert);
+                }
+            }, 5000);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            analysisBtn.innerHTML = originalText;
+            analysisBtn.disabled = false;
+        });
     }
     
     function showError(message) {

@@ -3846,3 +3846,236 @@ async def remove_task_container(
     """
     # 直接调用释放容器接口
     return await release_task_docker(task_id)
+
+@router.post("/tasks/{task_id}/intelligent-analysis", response_model=Dict[str, Any])
+async def perform_intelligent_analysis(
+    task_id: str = Path(..., description="任务ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    对已完成的测试任务进行智能分析
+    
+    - **task_id**: 任务ID
+    """
+    try:
+        # 检查任务是否存在
+        task = get_test_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        
+        # 检查任务是否有已完成的测试用例
+        test_cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
+        if not test_cases:
+            raise HTTPException(status_code=400, detail="任务中没有测试用例")
+        
+        # 检查是否有已执行的测试用例
+        executed_cases = [case for case in test_cases if case.status in ['completed', 'passed', 'failed']]
+        if not executed_cases:
+            raise HTTPException(status_code=400, detail="任务中没有已执行的测试用例，请先执行测试")
+        
+        log.info(f"开始对任务 {task_id} 进行智能分析，共 {len(executed_cases)} 个已执行用例")
+        
+        # 调用报告Agent进行智能分析
+        from agents.report_agent import run_report_generation
+        
+        analysis_result = await run_report_generation(task_id)
+        
+        if analysis_result.get("status") == "error":
+            error_messages = analysis_result.get("errors", ["未知错误"])
+            raise HTTPException(
+                status_code=500, 
+                detail=f"智能分析失败: {'; '.join(error_messages)}"
+            )
+        
+        # 返回分析结果
+        return {
+            "success": True,
+            "message": "智能分析完成",
+            "task_id": task_id,
+            "analysis_status": analysis_result.get("status"),
+            "analyzed_cases": len(executed_cases),
+            "analysis_results": analysis_result.get("analysis_results", []),
+            "report_path": analysis_result.get("report_path"),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"智能分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"智能分析失败: {str(e)}")
+
+
+@router.post("/testcases/{case_id}/intelligent-analysis", response_model=Dict[str, Any])
+async def perform_single_case_analysis(
+    case_id: str = Path(..., description="测试用例ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    对单个测试用例进行智能分析
+    
+    - **case_id**: 测试用例ID
+    """
+    try:
+        # 获取测试用例
+        test_case = db.query(DBTestCase).filter(DBTestCase.case_id == case_id).first()
+        if not test_case:
+            raise HTTPException(status_code=404, detail=f"测试用例不存在: {case_id}")
+        
+        # 检查测试用例是否已执行
+        if test_case.status not in ['completed', 'passed', 'failed']:
+            raise HTTPException(status_code=400, detail="测试用例尚未执行，请先执行测试")
+        
+        log.info(f"开始对测试用例 {case_id} 进行智能分析")
+        
+        # 调用报告Agent的分析功能（针对单个用例）
+        from agents.report_agent import analyze_test_results
+        
+        # 构建分析状态
+        analysis_state = {
+            "task_id": test_case.task_id,
+            "test_cases": None,
+            "analysis_results": None,
+            "errors": [],
+            "status": "created"
+        }
+        
+        # 执行分析
+        result = analyze_test_results(analysis_state)
+        
+        if result.get("status") == "error":
+            error_messages = result.get("errors", ["未知错误"])
+            raise HTTPException(
+                status_code=500, 
+                detail=f"智能分析失败: {'; '.join(error_messages)}"
+            )
+        
+        # 获取更新后的测试用例数据
+        updated_case = db.query(DBTestCase).filter(DBTestCase.case_id == case_id).first()
+        
+        return {
+            "success": True,
+            "message": "单个测试用例智能分析完成",
+            "case_id": case_id,
+            "analysis_status": result.get("status"),
+            "is_passed": updated_case.is_passed if updated_case else None,
+            "result_analysis": updated_case.result_analysis if updated_case else None,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"单个测试用例智能分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"智能分析失败: {str(e)}")
+
+@router.post("/tasks/batch-intelligent-analysis", response_model=Dict[str, Any])
+async def perform_batch_intelligent_analysis(
+    request: Dict[str, List[str]] = Body(..., description="批量智能分析请求"),
+    db: Session = Depends(get_db)
+):
+    """
+    对多个已完成的测试任务进行批量智能分析
+    
+    - **task_ids**: 任务ID列表
+    """
+    try:
+        task_ids = request.get('task_ids', [])
+        if not task_ids:
+            raise HTTPException(status_code=400, detail="请提供要分析的任务ID列表")
+        
+        log.info(f"开始批量智能分析，任务数量: {len(task_ids)}")
+        
+        analysis_results = []
+        successful_count = 0
+        failed_count = 0
+        
+        # 逐个处理任务
+        for task_id in task_ids:
+            try:
+                # 检查任务是否存在
+                task = get_test_task(task_id)
+                if not task:
+                    analysis_results.append({
+                        "task_id": task_id,
+                        "success": False,
+                        "error": f"任务不存在: {task_id}"
+                    })
+                    failed_count += 1
+                    continue
+                
+                # 检查任务是否有已完成的测试用例
+                test_cases = db.query(DBTestCase).filter(DBTestCase.task_id == task_id).all()
+                if not test_cases:
+                    analysis_results.append({
+                        "task_id": task_id,
+                        "success": False,
+                        "error": "任务中没有测试用例"
+                    })
+                    failed_count += 1
+                    continue
+                
+                # 检查是否有已执行的测试用例
+                executed_cases = [case for case in test_cases if case.status in ['completed', 'passed', 'failed']]
+                if not executed_cases:
+                    analysis_results.append({
+                        "task_id": task_id,
+                        "success": False,
+                        "error": "任务中没有已执行的测试用例"
+                    })
+                    failed_count += 1
+                    continue
+                
+                log.info(f"分析任务 {task_id}，共 {len(executed_cases)} 个已执行用例")
+                
+                # 调用报告Agent进行智能分析
+                from agents.report_agent import run_report_generation
+                
+                analysis_result = await run_report_generation(task_id)
+                
+                if analysis_result.get("status") == "error":
+                    error_messages = analysis_result.get("errors", ["未知错误"])
+                    analysis_results.append({
+                        "task_id": task_id,
+                        "success": False,
+                        "error": f"智能分析失败: {'; '.join(error_messages)}"
+                    })
+                    failed_count += 1
+                else:
+                    analysis_results.append({
+                        "task_id": task_id,
+                        "success": True,
+                        "analyzed_cases": len(executed_cases),
+                        "analysis_status": analysis_result.get("status"),
+                        "report_path": analysis_result.get("report_path")
+                    })
+                    successful_count += 1
+                    
+            except Exception as e:
+                log.error(f"分析任务 {task_id} 失败: {str(e)}")
+                analysis_results.append({
+                    "task_id": task_id,
+                    "success": False,
+                    "error": f"分析失败: {str(e)}"
+                })
+                failed_count += 1
+        
+        # 返回批量分析结果
+        return {
+            "success": True,
+            "message": f"批量智能分析完成，成功: {successful_count}，失败: {failed_count}",
+            "total_tasks": len(task_ids),
+            "successful_count": successful_count,
+            "failed_count": failed_count,
+            "results": analysis_results,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"批量智能分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"批量智能分析失败: {str(e)}")
+
+
+# 添加在现有路由之后
