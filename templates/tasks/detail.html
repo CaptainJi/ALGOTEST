@@ -10,9 +10,6 @@
     <button id="configBtn" class="btn btn-outline-primary" disabled>
         <i class="bi bi-gear"></i> 配置任务
     </button>
-    <button id="executeBtn" class="btn btn-success" disabled>
-        <i class="bi bi-play-fill"></i> 执行测试
-    </button>
 </div>
 {% endblock %}
 
@@ -168,6 +165,7 @@
                 <h5 class="modal-title">
                     <i class="bi bi-play-circle me-2"></i>测试执行进度
                 </h5>
+                <button type="button" class="btn-close" id="modalCloseBtn" onclick="closeProgressModal()"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
@@ -223,7 +221,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="closeProgressBtn" onclick="closeProgressModal()" disabled>
+                <button type="button" class="btn btn-secondary" id="closeProgressBtn" onclick="closeProgressModal()">
                     关闭
                 </button>
                 <button type="button" class="btn btn-primary" id="viewResultsBtn" onclick="viewResults()" style="display: none;">
@@ -262,9 +260,12 @@
                 // 更新页面信息
                 updateTaskInfo(taskData);
                 updateConfigInfo(taskData);
-                updateTaskStatus(taskData);
-                loadTestCases(taskData.document_id);
-                updateActionButtons(taskData);
+                
+                // 先加载测试用例，然后更新状态和按钮
+                loadTestCases(taskData.document_id).then(() => {
+                    updateTaskStatus(taskData);
+                    updateActionButtons(taskData);
+                });
             })
             .catch(error => {
                 console.error('获取任务信息失败:', error);
@@ -499,9 +500,12 @@
                 </div>
             `;
         } else if (task.status === 'completed') {
-            // 已完成，显示结果统计
+            // 已完成，显示结果统计和配置状态
+            const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+            const hasTestData = testCases.length > 0 && unconfiguredCases.length === 0;
+            
             container.innerHTML = `
-                <div class="row text-center">
+                <div class="row text-center mb-3">
                     <div class="col-4">
                         <div class="py-3">
                             <h5 class="fw-bold mb-1" style="color: #43cea2">85%</h5>
@@ -521,10 +525,58 @@
                         </div>
                     </div>
                 </div>
-                <div class="mt-3">
-                    <canvas id="resultsChart" height="140"></canvas>
+                
+                <!-- 配置状态检查 -->
+                <div class="row text-center mb-3">
+                    <div class="col-2">
+                        <div class="py-2">
+                            <i class="bi bi-check-circle text-success fs-5"></i>
+                            <div class="small text-muted mt-1">算法镜像</div>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="py-2">
+                            <i class="bi bi-check-circle text-success fs-5"></i>
+                            <div class="small text-muted mt-1">数据集</div>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="py-2">
+                            <i class="bi bi-check-circle text-success fs-5"></i>
+                            <div class="small text-muted mt-1">测试用例</div>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="py-2">
+                            <i class="bi bi-${task.container_name ? 'check-circle text-success' : 'x-circle text-danger'} fs-5"></i>
+                            <div class="small text-muted mt-1">容器环境</div>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="py-2">
+                            <i class="bi bi-${hasTestData ? 'check-circle text-success' : 'x-circle text-danger'} fs-5"></i>
+                            <div class="small text-muted mt-1">测试数据</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="text-center mt-3">
+                
+                <!-- 容器管理按钮 -->
+                <div class="text-center mb-3">
+                    ${task.container_name ? `
+                        <button class="btn btn-outline-danger btn-sm me-2" onclick="removeContainer('${task.task_id}')">
+                            <i class="bi bi-stop-fill me-1"></i> 停止容器
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="checkContainerStatus('${task.task_id}')">
+                            <i class="bi bi-arrow-clockwise me-1"></i> 检查状态
+                        </button>
+                    ` : `
+                        <button class="btn btn-outline-success btn-sm" onclick="setupContainer('${task.task_id}')" ${!task.algorithm_image ? 'disabled' : ''}>
+                            <i class="bi bi-play-fill me-1"></i> 启动容器
+                        </button>
+                    `}
+                </div>
+                
+                <div class="text-center">
                     <a href="/reports/${task.task_id}" class="btn btn-primary">
                         <i class="bi bi-file-earmark-bar-graph me-1"></i> 查看完整报告
                     </a>
@@ -533,6 +585,10 @@
             
             // 初始化图表
             setTimeout(() => {
+                const chartContainer = document.createElement('div');
+                chartContainer.innerHTML = '<canvas id="resultsChart" height="140"></canvas>';
+                container.querySelector('.text-center:last-child').before(chartContainer);
+                
                 const ctx = document.getElementById('resultsChart').getContext('2d');
                 new Chart(ctx, {
                     type: 'doughnut',
@@ -585,7 +641,11 @@
             const hasTestCases = task.test_cases_count > 0;
             const hasContainer = task.container_name && task.container_name.trim() !== '';
             
-            if (hasAlgorithmImage && hasDatasetUrl && hasTestCases && hasContainer) {
+            // 检查测试数据配置状态 - 确保testCases已加载
+            const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+            const hasTestData = testCases.length > 0 && unconfiguredCases.length === 0;
+            
+            if (hasAlgorithmImage && hasDatasetUrl && hasTestCases && hasContainer && hasTestData) {
                 // 配置完整，可以执行测试
                 container.innerHTML = `
                     <div class="alert alert-success">
@@ -593,31 +653,48 @@
                         任务配置完整，可以开始执行测试
                     </div>
                     <div class="row text-center mb-3">
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-check-circle text-success fs-4"></i>
                                 <div class="small text-muted mt-1">算法镜像</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-check-circle text-success fs-4"></i>
                                 <div class="small text-muted mt-1">数据集</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-check-circle text-success fs-4"></i>
                                 <div class="small text-muted mt-1">测试用例</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-check-circle text-success fs-4"></i>
                                 <div class="small text-muted mt-1">容器环境</div>
                             </div>
                         </div>
+                        <div class="col-2">
+                            <div class="py-2">
+                                <i class="bi bi-check-circle text-success fs-4"></i>
+                                <div class="small text-muted mt-1">测试数据</div>
+                            </div>
+                        </div>
                     </div>
+                    
+                    <!-- 容器管理按钮 -->
+                    <div class="text-center mb-3">
+                        <button class="btn btn-outline-danger btn-sm me-2" onclick="removeContainer('${task.task_id}')">
+                            <i class="bi bi-stop-fill me-1"></i> 停止容器
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="checkContainerStatus('${task.task_id}')">
+                            <i class="bi bi-arrow-clockwise me-1"></i> 检查状态
+                        </button>
+                    </div>
+                    
                     <div class="text-center">
                         <button id="startTestBtn" class="btn btn-success btn-lg">
                             <i class="bi bi-play-fill me-2"></i> 开始执行测试
@@ -639,6 +716,7 @@
                 if (!hasDatasetUrl) missingItems.push('数据集路径');
                 if (!hasTestCases) missingItems.push('测试用例');
                 if (!hasContainer) missingItems.push('Docker容器');
+                if (!hasTestData && hasTestCases) missingItems.push(`测试数据(${unconfiguredCases.length}个未配置)`);
                 
                 container.innerHTML = `
                     <div class="alert alert-warning">
@@ -646,35 +724,63 @@
                         任务配置不完整，请先完成以下配置：${missingItems.join('、')}
                     </div>
                     <div class="row text-center mb-3">
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-${hasAlgorithmImage ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
                                 <div class="small text-muted mt-1">算法镜像</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-${hasDatasetUrl ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
                                 <div class="small text-muted mt-1">数据集</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-${hasTestCases ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
                                 <div class="small text-muted mt-1">测试用例</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-2">
                             <div class="py-2">
                                 <i class="bi bi-${hasContainer ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
                                 <div class="small text-muted mt-1">容器环境</div>
                             </div>
                         </div>
+                        <div class="col-2">
+                            <div class="py-2">
+                                <i class="bi bi-${hasTestData ? 'check-circle text-success' : 'x-circle text-danger'} fs-4"></i>
+                                <div class="small text-muted mt-1">测试数据</div>
+                            </div>
+                        </div>
                     </div>
+                    
+                    <!-- 容器管理按钮 -->
+                    <div class="text-center mb-3">
+                        ${hasContainer ? `
+                            <button class="btn btn-outline-danger btn-sm me-2" onclick="removeContainer('${task.task_id}')">
+                                <i class="bi bi-stop-fill me-1"></i> 停止容器
+                            </button>
+                            <button class="btn btn-outline-info btn-sm" onclick="checkContainerStatus('${task.task_id}')">
+                                <i class="bi bi-arrow-clockwise me-1"></i> 检查状态
+                            </button>
+                        ` : `
+                            <button class="btn btn-outline-success btn-sm" onclick="setupContainer('${task.task_id}')" ${!hasAlgorithmImage ? 'disabled' : ''}>
+                                <i class="bi bi-play-fill me-1"></i> 启动容器
+                            </button>
+                        `}
+                    </div>
+                    
                     <div class="text-center">
                         <a href="/tasks/${task.task_id}/configure" class="btn btn-outline-primary me-2">
                             <i class="bi bi-gear me-1"></i> 完善配置
                         </a>
+                        ${!hasTestData && hasTestCases ? `
+                            <a href="/testcases?task_id=${task.task_id}" class="btn btn-warning me-2">
+                                <i class="bi bi-database me-1"></i> 配置测试数据
+                            </a>
+                        ` : ''}
                         <button id="startTestBtn" class="btn btn-success" disabled>
                             <i class="bi bi-play-fill me-1"></i> 开始测试
                         </button>
@@ -696,19 +802,21 @@
                     该任务未关联文档，无法获取测试用例
                 </div>
             `;
-            return;
+            return Promise.resolve();
         }
         
         // 获取测试用例
-        fetch(`/api/testcases?${queryParam}`)
+        return fetch(`/api/testcases?${queryParam}`)
             .then(response => response.json())
             .then(data => {
                 testCases = data.test_cases || [];
                 updateTestCasesOverview(testCases);
+                return testCases; // 返回测试用例数据
             })
             .catch(error => {
                 console.error('获取测试用例失败:', error);
                 showError(document.getElementById('testCasesContainer'), '加载测试用例失败，请刷新重试');
+                return []; // 出错时返回空数组
             });
     }
 
@@ -803,34 +911,36 @@
         `;
     }
 
-
-
     function updateActionButtons(task) {
         const configBtn = document.getElementById('configBtn');
-        const executeBtn = document.getElementById('executeBtn');
         
         // 启用配置按钮
         configBtn.disabled = false;
         configBtn.href = `/tasks/${task.task_id}/configure`;
-        
-        // 判断执行按钮状态
-        if (task.status === 'executing' || task.status === 'preparing') {
-            executeBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> 执行中...';
-            executeBtn.disabled = true;
-        } else if (task.test_cases_count > 0 && task.algorithm_image && task.dataset_url) {
-            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
-            executeBtn.disabled = false;
-            executeBtn.onclick = () => executeTask(task.task_id);
-        } else {
-            executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
-            executeBtn.disabled = true;
-        }
     }
-
-
 
     function executeTask(taskId) {
         console.log(`执行任务: ${taskId}`);
+        
+        // 首先检查测试数据配置状态
+        const unconfiguredCases = testCases.filter(tc => !tc.test_data);
+        
+        if (unconfiguredCases.length > 0) {
+            // 有未配置测试数据的用例，提示用户
+            const message = `检测到 ${unconfiguredCases.length} 个测试用例未设置测试数据，请先配置测试数据后再执行测试。\n\n未配置的用例包括：\n${unconfiguredCases.slice(0, 3).map(tc => `• ${tc.name || tc.id}`).join('\n')}${unconfiguredCases.length > 3 ? '\n• ...' : ''}`;
+            
+            if (confirm(`${message}\n\n是否现在去配置测试数据？`)) {
+                // 跳转到测试用例管理页面
+                window.location.href = `/testcases?task_id=${taskId}`;
+            }
+            return;
+        }
+        
+        // 检查是否有测试用例
+        if (testCases.length === 0) {
+            showNotification('warning', '该任务没有测试用例，请先创建测试用例');
+            return;
+        }
         
         if (!confirm('确定要执行此测试任务吗？这可能需要几分钟时间。')) {
             return;
@@ -860,13 +970,44 @@
         .then(data => {
             console.log('测试执行任务已启动:', data);
             
+            // 检查是否有错误信息 - 修复错误处理逻辑
+            if (data.error) {
+                // 如果有错误信息，显示具体错误
+                addExecutionLog(`执行失败: ${data.error}`, 'danger');
+                
+                // 恢复按钮状态
+                const executeBtn = document.getElementById('executeBtn');
+                executeBtn.innerHTML = '<i class="bi bi-play-fill me-1"></i> 执行测试';
+                executeBtn.disabled = false;
+                
+                // 确保关闭按钮可用
+                document.getElementById('closeProgressBtn').disabled = false;
+                
+                // 显示通知
+                showNotification('danger', `测试执行失败: ${data.error}`);
+                
+                // 如果是测试数据未设置的错误，提供快速解决方案
+                if (data.error.includes('测试数据路径未设置') || data.error.includes('请先设置测试数据')) {
+                    setTimeout(() => {
+                        if (confirm('检测到测试用例未设置测试数据，是否现在去配置？')) {
+                            window.location.href = `/testcases?task_id=${taskId}`;
+                        }
+                    }, 2000);
+                }
+                return;
+            }
+            
+            // 如果没有错误，说明执行成功开始，此时禁用关闭按钮
+            document.getElementById('closeProgressBtn').disabled = true;
+            
             // 更新进度显示
             updateExecutionProgress({
                 total: data.cases_total || 0,
                 executed: data.cases_executed || 0,
                 passed: data.cases_passed || 0,
                 failed: data.cases_failed || 0,
-                message: data.message || '测试执行已开始'
+                message: data.message || '测试执行已开始',
+                error: data.error // 传递错误信息
             });
             
             // 开始轮询状态
@@ -925,8 +1066,8 @@
         document.getElementById('failedCases').textContent = '0';
         document.getElementById('executionLog').innerHTML = '<div class="text-muted">正在启动测试执行...</div>';
         
-        // 禁用关闭按钮
-        document.getElementById('closeProgressBtn').disabled = true;
+        // 关闭按钮默认启用，只有在正常执行时才禁用
+        document.getElementById('closeProgressBtn').disabled = false;
         document.getElementById('viewResultsBtn').style.display = 'none';
         
         // 显示模态框
@@ -957,6 +1098,11 @@
             addExecutionLog(data.message, 'info');
         }
         
+        // 添加错误信息
+        if (data.error) {
+            addExecutionLog(`错误: ${data.error}`, 'danger');
+        }
+        
         // 如果执行完成，启用关闭按钮和查看结果按钮
         if (executed >= total && total > 0) {
             document.getElementById('closeProgressBtn').disabled = false;
@@ -975,7 +1121,12 @@
             
             // 添加完成日志
             const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
-            addExecutionLog(`测试执行完成！成功率: ${successRate}% (${passed}/${total})`, 'success');
+            if (failed > 0 && data.error) {
+                addExecutionLog(`测试执行完成，但有错误！成功率: ${successRate}% (${passed}/${total})`, 'warning');
+                addExecutionLog(`主要错误: ${data.error}`, 'danger');
+            } else {
+                addExecutionLog(`测试执行完成！成功率: ${successRate}% (${passed}/${total})`, 'success');
+            }
         }
     }
 

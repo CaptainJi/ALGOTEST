@@ -1128,10 +1128,6 @@
                                 <a href="/tasks/${taskId}" class="btn btn-outline-primary btn-sm">
                                     <i class="bi bi-list-ul me-1"></i>管理测试用例
                                 </a>
-                                <button type="button" class="btn btn-outline-success btn-sm" 
-                                        onclick="executeAllTestCases('${taskId}')">
-                                    <i class="bi bi-play-fill me-1"></i>执行所有用例
-                                </button>
                             </div>
                         `}
                     </div>
@@ -1234,31 +1230,6 @@
         .catch(error => {
             console.error('执行测试用例失败:', error);
             showNotification('danger', `执行测试用例失败: ${error.message}`);
-        });
-    }
-    
-    // 执行任务的所有测试用例
-    function executeAllTestCases(taskId) {
-        if (!confirm('确定要执行此任务的所有测试用例吗？这可能需要一些时间。')) return;
-        
-        showNotification('info', '正在执行所有测试用例，请稍候...');
-        
-        fetch(`/api/tasks/${taskId}/execute`, {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showNotification('success', `所有测试用例执行完成！通过 ${data.cases_passed} 个，失败 ${data.cases_failed} 个`);
-            } else {
-                showNotification('warning', `测试执行完成，但有错误: ${data.error || '未知错误'}`);
-            }
-            // 刷新任务详情
-            loadTaskTestCases(taskId);
-        })
-        .catch(error => {
-            console.error('执行所有测试用例失败:', error);
-            showNotification('danger', `执行所有测试用例失败: ${error.message}`);
         });
     }
 </script>

@@ -220,78 +220,54 @@ async def upload_document(
     """
     上传算法需求文档
     
-    - **file**: 上传的PDF格式需求文档
+    - **file**: PDF格式的算法需求文档
     
-    返回文档ID和存储路径
+    返回文档ID和上传信息
     """
-    # 检查文件类型
-    if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="只支持PDF格式的需求文档")
-    
     log.info(f"开始上传文档: {file.filename}")
     
     try:
-        # 确保目标目录存在
-        os.makedirs("data/pdfs", exist_ok=True)
+        # 验证文件类型
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="只支持PDF格式的文件")
         
-        # 生成唯一文档ID
-        document_id = generate_unique_id("DOC")
-        
-        # 构建文件保存路径
-        file_path = f"data/pdfs/{document_id}_{file.filename}"
-        
-        # 读取上传的文件内容并保存
+        # 读取文件内容
         content = await file.read()
         
-        # 检查文件内容是否已存在（通过文件哈希值比较）
-        import hashlib
+        # 计算文件哈希值
         file_hash = hashlib.md5(content).hexdigest()
         
-        # 检查数据库中是否已存在相同内容的文档
-        existing_task = db.query(DBTestTask).filter(
-            DBTestTask.document_hash == file_hash
-        ).first()
+        # 检查是否已存在相同的文档（通过内存中的文档记录检查）
+        for doc_id, doc_info in DOCUMENTS.items():
+            if doc_info.get("file_hash") == file_hash:
+                log.info(f"文档已存在，返回现有文档信息: {doc_id}")
+                return {
+                    "message": "文档已存在",
+                    "document_id": doc_id,
+                    "filename": file.filename,
+                    "file_path": doc_info.get("file_path", f"data/pdfs/{doc_id}_{file.filename}")
+                }
         
-        if existing_task:
-            log.info(f"文件已存在: {file.filename}, 关联任务ID: {existing_task.task_id}")
-            # 返回已存在文档的信息
-            return {
-                "message": "文档已存在",
-                "document_id": existing_task.document_id,
-                "filename": file.filename,
-                "file_path": f"data/pdfs/{existing_task.document_id}_{file.filename}" 
-            }
-            
+        # 生成文档ID
+        document_id = generate_unique_id("DOC")
+        
+        # 确保目录存在
+        os.makedirs("data/pdfs", exist_ok=True)
+        
+        # 保存文件
+        file_path = f"data/pdfs/{document_id}_{file.filename}"
         with open(file_path, "wb") as f:
             f.write(content)
         
-        # 为该文档创建一个任务
-        task_id = generate_unique_id("TASK")
-        task_data = {
-            "task_id": task_id,
-            "document_id": document_id,  # 添加文档ID
-            "requirement_doc": "",  # 暂时不保存文档内容，后续分析时会更新
-            "algorithm_image": None,
-            "dataset_url": None,
-            "document_hash": file_hash,  # 保存文件哈希值
-            "status": "created"
-        }
-        
-        # 保存到数据库
-        task = DBTestTask(**task_data)
-        db.add(task)
-        db.commit()
-        
-        # 存储文档信息
+        # 存储文档信息（不创建任务）
         DOCUMENTS[document_id] = {
             "id": document_id,
             "filename": file.filename,
             "file_path": file_path,
-            "file_hash": file_hash,
-            "task_id": task_id  # 保存任务ID
+            "file_hash": file_hash
         }
         
-        log.success(f"文档上传成功: {file.filename}, ID: {document_id}, 关联任务ID: {task_id}")
+        log.success(f"文档上传成功: {file.filename}, ID: {document_id}")
         
         return {
             "message": "文档上传成功",
@@ -300,8 +276,6 @@ async def upload_document(
             "file_path": file_path
         }
     except Exception as e:
-        if 'db' in locals() and db:
-            db.rollback()
         log.error(f"文档上传异常: {str(e)}")
         raise HTTPException(status_code=500, detail=f"文档上传异常: {str(e)}")
 
@@ -555,15 +529,22 @@ async def analyze_document(
     log.info(f"开始分析文档: {matching_files[0]}, ID: {document_id}")
     
     try:
-        # 查找与文档关联的任务
+        # 查找与文档关联的任务，优先查找数据库中已存在的任务
         task = None
-        doc_info = DOCUMENTS.get(document_id)
         
-        if doc_info and 'task_id' in doc_info:
-            # 如果文档信息中有任务ID，获取该任务
-            task_id = doc_info['task_id']
-            task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
-            log.info(f"找到文档关联的任务: {task_id}")
+        # 1. 首先从数据库中查找已关联该文档的任务
+        existing_task = db.query(DBTestTask).filter(DBTestTask.document_id == document_id).first()
+        if existing_task:
+            task = existing_task
+            log.info(f"找到数据库中已关联的任务: {task.task_id}")
+        else:
+            # 2. 如果数据库中没有，再从内存中查找
+            doc_info = DOCUMENTS.get(document_id)
+            if doc_info and 'task_id' in doc_info:
+                task_id = doc_info['task_id']
+                task = db.query(DBTestTask).filter(DBTestTask.task_id == task_id).first()
+                if task:
+                    log.info(f"找到内存中关联的任务: {task_id}")
         
         if not task:
             # 如果没有找到任务，创建一个新任务
@@ -571,22 +552,34 @@ async def analyze_document(
             task_data = {
                 "task_id": task_id,
                 "document_id": document_id,  # 添加文档ID
-                "requirement_doc": "",  # 暂时不保存文档内容
-                "algorithm_image": "auto_generated",
+                "requirement_doc": "",  # 暂时不保存文档内容，后续分析时会更新
+                "algorithm_image": None,
+                "dataset_url": None,
                 "status": "created"
             }
             
-            # 创建测试任务
+            # 保存到数据库
             task = DBTestTask(**task_data)
             db.add(task)
             db.commit()
             db.refresh(task)
             
             # 如果文档信息存在，更新任务ID
+            doc_info = DOCUMENTS.get(document_id)
             if doc_info:
                 doc_info['task_id'] = task_id
             
             log.info(f"为文档创建新任务: {task_id}")
+        
+        # 检查是否已经有测试用例了
+        existing_cases = db.query(DBTestCase).filter(DBTestCase.task_id == task.task_id).all()
+        if existing_cases:
+            log.info(f"任务 {task.task_id} 已有 {len(existing_cases)} 个测试用例，返回现有用例")
+            formatted_test_cases = [format_test_case(case) for case in existing_cases]
+            return {
+                "message": f"任务已有{len(formatted_test_cases)}个测试用例",
+                "test_cases": formatted_test_cases
+            }
         
         # 创建初始状态
         state = {
@@ -3182,8 +3175,30 @@ fi
                             
                             # 检查脚本退出码
                             exit_code = -1
-                            if hasattr(result, 'exit_code'):
+                            output = ""
+                            
+                            # 处理不同类型的返回结果
+                            if hasattr(result, 'content'):
+                                # 如果result有content属性，尝试解析
+                                content = result.content
+                                if isinstance(content, list) and len(content) > 0:
+                                    # 获取第一个内容项
+                                    first_content = content[0]
+                                    if hasattr(first_content, 'text'):
+                                        output = first_content.text
+                                    # 尝试从输出中解析退出码
+                                    if "容器运行中" in output:
+                                        exit_code = 0
+                                    elif "容器不存在" in output:
+                                        exit_code = 1
+                                    elif "容器存在但未运行" in output:
+                                        exit_code = 2
+                            elif hasattr(result, 'exit_code'):
                                 exit_code = result.exit_code
+                            elif hasattr(result, 'returncode'):
+                                exit_code = result.returncode
+                            
+                            log.info(f"容器状态检查结果: exit_code={exit_code}, output={output}")
                             
                             # 退出码: 0=容器运行中, 1=容器不存在, 2=容器未运行
                             if exit_code == 0:

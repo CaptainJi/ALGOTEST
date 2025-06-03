@@ -89,6 +89,10 @@ def analyze_test_results(state: ReportState) -> ReportState:
                 # 调用大模型API
                 llm_result = call_zhipu_api(case_prompt, llm_config)
                 
+                # 添加调试日志
+                log.info(f"大模型原始回复长度: {len(llm_result) if llm_result else 0}")
+                log.info(f"大模型原始回复前500字符: {repr(llm_result[:500]) if llm_result else 'None'}")
+                
                 # 解析大模型返回结果
                 try:
                     llm_analysis = parse_llm_response(llm_result)
@@ -108,7 +112,23 @@ def analyze_test_results(state: ReportState) -> ReportState:
                     # 如果大模型分析失败，使用结构化分析结果
                     log.warning(f"大模型分析失败，使用结构化分析结果: {str(e)}")
                     case.is_passed = structured_comparison["is_passed"]
-                    case.result_analysis = f"结构化分析结果: {', '.join(structured_comparison['reasons'])}"
+                    
+                    # 构建更详细的分析说明
+                    analysis_parts = []
+                    if structured_comparison.get("reasons"):
+                        analysis_parts.append(f"分析结果: {', '.join(structured_comparison['reasons'])}")
+                    
+                    # 添加检测详情
+                    if structured_comparison.get("detected_objects"):
+                        objects_summary = f"检测到 {len(structured_comparison['detected_objects'])} 个目标"
+                        analysis_parts.append(objects_summary)
+                    
+                    # 添加警报状态
+                    if "is_alert" in structured_comparison:
+                        alert_status = "有警报" if structured_comparison["is_alert"] else "无警报"
+                        analysis_parts.append(f"警报状态: {alert_status}")
+                    
+                    case.result_analysis = "结构化分析结果: " + "; ".join(analysis_parts) if analysis_parts else "结构化分析完成"
                     case.status = "completed"
             
             # 提交所有更改
@@ -501,8 +521,8 @@ def extract_algorithm_results(actual_output: str) -> Dict[str, Any]:
         if processing_time_match:
             result["processing_time"] = float(processing_time_match.group(1))
         
-        # 提取JSON结果部分
-        json_match = re.search(r'event info:[\s\S]*?json: (\{[\s\S]*?\})\}?I', actual_output)
+        # 提取JSON结果部分 - 修复正则表达式
+        json_match = re.search(r'json:\s*(\{[\s\S]*?\n\})', actual_output)
         if json_match:
             try:
                 # 清理JSON字符串中的转义字符
@@ -532,15 +552,37 @@ def extract_algorithm_results(actual_output: str) -> Dict[str, Any]:
                     if "is_alert" in json_data["algorithm_data"]:
                         result["is_alert"] = json_data["algorithm_data"]["is_alert"]
                     
-                    # 提取警报原因（如果有）
-                    if "target_info" in json_data["algorithm_data"] and json_data["algorithm_data"]["target_info"]:
-                        alert_objects = []
-                        for target in json_data["algorithm_data"]["target_info"]:
-                            if target.get("is_alert", False):
-                                alert_objects.append(target.get("name", "unknown"))
+                    # 提取警报原因
+                    if result["is_alert"]:
+                        # 如果is_alert为true，查找造成警报的原因
+                        alert_reasons = []
                         
-                        if alert_objects:
-                            result["alert_reason"] = f"检测到警报对象: {', '.join(alert_objects)}"
+                        # 检查是否有没戴安全帽的头部
+                        head_count = 0
+                        hat_count = 0
+                        
+                        for obj in result["detected_objects"]:
+                            if obj["name"] == "head":
+                                head_count += 1
+                            elif "hat" in obj["name"]:
+                                hat_count += 1
+                        
+                        if head_count > 0:
+                            alert_reasons.append(f"检测到{head_count}个未佩戴安全帽的头部")
+                        
+                        # 也检查target_info中的is_alert标记
+                        if "target_info" in json_data["algorithm_data"]:
+                            specific_alerts = []
+                            for target in json_data["algorithm_data"]["target_info"]:
+                                if target.get("is_alert", False):
+                                    specific_alerts.append(target.get("name", "unknown"))
+                            if specific_alerts:
+                                alert_reasons.append(f"标记警报的对象: {', '.join(specific_alerts)}")
+                        
+                        if alert_reasons:
+                            result["alert_reason"] = "; ".join(alert_reasons)
+                        else:
+                            result["alert_reason"] = "算法触发警报但未指定具体原因"
             except json.JSONDecodeError:
                 pass
     except Exception as e:
@@ -677,41 +719,29 @@ def construct_enhanced_prompt(case, algorithm_results, task_type="安全帽检�
             expected_description = expected_output["description"]
     
     # 构建提示词
-    prompt = f"""
-请详细分析以下安全帽检测算法的测试用例与实际结果。
+    detected_objects_summary = []
+    for obj in algorithm_results.get('detected_objects', []):
+        detected_objects_summary.append(f"{obj['name']}(置信度:{obj['confidence']:.2f})")
+    
+    prompt = f"""请分析安全帽检测算法的测试结果。
 
-测试用例ID: {case_id}
+测试用例: {case_id}
 测试数据: {test_data}
-预期结果描述: {expected_description}
+预期结果: {expected_description}
 
-算法实际执行结果摘要:
-- 检测到的对象: {algorithm_results.get('detected_objects', [])}
-- 处理时间: {algorithm_results.get('processing_time')} ms
-- 是否发出警报: {algorithm_results.get('is_alert', False)}
+实际检测结果:
+- 检测到{len(algorithm_results.get('detected_objects', []))}个对象: {', '.join(detected_objects_summary)}
+- 警报状态: {algorithm_results.get('is_alert', False)}
 - 警报原因: {algorithm_results.get('alert_reason', '无警报')}
+- 处理时间: {algorithm_results.get('processing_time', '未知')} ms
 
-分析任务:
-1. 判断算法是否符合预期:
-   - 重点检查 `is_alert` 字段是否符合预期
-   - 检查是否正确识别了安全帽/头部，以及置信度是否合理
-   - 检查算法处理时间是否合理
+分析要点:
+1. 检查检测到的对象是否符合预期
+2. 检查警报状态是否正确(有未戴帽的head时应该为true)
+3. 检查处理性能是否合理
 
-2. 对于安全帽检测算法，需要特别关注:
-   - 有人未佩戴安全帽时是否正确发出警报
-   - 所有人都佩戴安全帽时是否正确不发出警报
-   - 算法对不同颜色安全帽(红、黄、蓝、白、黑等)的识别能力
-   - 不同角度(正面、侧面)的头部检测能力
-
-请对比实际输出中的is_alert字段或其他警报相关信息，判断算法是否满足预期结果中的要求。
-
-请按以下JSON格式输出分析结果:
-{{
-    "is_passed": true/false,  // 测试用例是否通过
-    "analysis": "详细分析说明",  // 对算法输出的详细分析
-    "reasoning": "推理过程",     // 分析的推理过程
-    "confidence": 0-100        // 对分析结果的置信度(百分比)
-}}
-"""
+请严格按照以下JSON格式回复:
+{{"is_passed": true, "analysis": "分析说明"}}"""
     
     return prompt
 
@@ -726,39 +756,84 @@ def parse_llm_response(llm_response: str) -> Dict[str, Any]:
         解析后的结构化结果
     """
     try:
+        # 检查输入是否为空或None
+        if not llm_response:
+            log.warning("大模型回复为空")
+            return {
+                "is_passed": False,
+                "analysis": "大模型回复为空，无法进行分析",
+                "error": "empty_response"
+            }
+        
+        # 检查是否是错误信息
+        if llm_response.startswith("API调用失败"):
+            log.error(f"大模型API调用失败: {llm_response}")
+            return {
+                "is_passed": False,
+                "analysis": f"大模型API调用失败: {llm_response}",
+                "error": "api_call_failed"
+            }
+        
+        log.debug(f"开始解析大模型回复，长度: {len(llm_response)}")
+        
+        # 清理控制字符
+        cleaned_response = ''.join(char for char in llm_response if ord(char) >= 32 or char in '\t\n\r')
+        log.debug(f"清理后回复长度: {len(cleaned_response)}")
+        
         # 尝试直接解析JSON
         try:
-            result = json.loads(llm_response)
+            result = json.loads(cleaned_response)
+            log.debug("成功直接解析JSON")
             return result
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as json_error:
+            log.debug(f"直接JSON解析失败: {str(json_error)}")
+            
             # 如果整个响应不是JSON，尝试提取JSON部分
             json_pattern = r'```json\s*([\s\S]*?)\s*```|```\s*([\s\S]*?)\s*```|\{[\s\S]*\}'
-            match = re.search(json_pattern, llm_response)
+            match = re.search(json_pattern, cleaned_response)
             if match:
                 json_str = match.group(1) or match.group(2) or match.group(0)
+                log.debug(f"提取到JSON候选: {json_str[:200]}...")
+                
                 # 清理可能的多余字符
                 json_str = json_str.strip()
                 if json_str.startswith("```") and json_str.endswith("```"):
                     json_str = json_str[3:-3].strip()
-                result = json.loads(json_str)
-                return result
+                
+                # 再次清理控制字符
+                json_str = ''.join(char for char in json_str if ord(char) >= 32 or char in '\t\n\r')
+                
+                try:
+                    result = json.loads(json_str)
+                    log.debug("成功解析提取的JSON")
+                    return result
+                except json.JSONDecodeError as extract_error:
+                    log.warning(f"提取的JSON解析失败: {str(extract_error)}")
         
         # 如果无法解析JSON，尝试从文本中提取关键信息
-        is_passed = "通过" in llm_response or "passed" in llm_response.lower()
-        if "不通过" in llm_response or "failed" in llm_response.lower() or "未通过" in llm_response:
+        log.debug("无法解析JSON，尝试提取关键信息")
+        is_passed = "通过" in cleaned_response or "passed" in cleaned_response.lower()
+        if "不通过" in cleaned_response or "failed" in cleaned_response.lower() or "未通过" in cleaned_response:
             is_passed = False
         
         # 简单提取分析内容
-        analysis = llm_response
+        analysis = cleaned_response
         
         return {
             "is_passed": is_passed,
-            "analysis": analysis
+            "analysis": analysis,
+            "parse_method": "text_extraction"
         }
             
     except Exception as e:
         log.error(f"解析大模型回复时出错: {str(e)}")
-        raise ValueError(f"无法解析大模型回复: {str(e)}")
+        log.error(f"问题回复内容: {repr(llm_response[:200]) if llm_response else 'None'}")
+        # 返回默认结果而不是抛出异常
+        return {
+            "is_passed": False,
+            "analysis": f"解析大模型回复失败: {str(e)}",
+            "error": str(e)
+        }
 
 def enhance_llm_results_with_structured_analysis(llm_results: Dict, structured_analysis: Dict) -> Dict:
     """
