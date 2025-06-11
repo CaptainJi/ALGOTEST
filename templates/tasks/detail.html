@@ -580,8 +580,19 @@
                     <a href="/reports/${task.task_id}" class="btn btn-primary">
                         <i class="bi bi-file-earmark-bar-graph me-1"></i> 查看完整报告
                     </a>
+                    <button id="rerunTestBtn" class="btn btn-warning ms-2">
+                        <i class="bi bi-arrow-repeat me-1"></i> 重新执行用例
+                    </button>
                 </div>
             `;
+            
+            // 绑定重新执行按钮事件
+            setTimeout(() => {
+                const rerunBtn = document.getElementById('rerunTestBtn');
+                if (rerunBtn) {
+                    rerunBtn.addEventListener('click', () => rerunTask(task.task_id));
+                }
+            }, 0);
             
             // 初始化图表
             setTimeout(() => {
@@ -1667,6 +1678,10 @@
             saveBtn.innerHTML = originalText;
             saveBtn.disabled = false;
         });
+    }
+
+    function rerunTask(taskId) {
+        executeTask(taskId);
     }
 </script>
 {% endblock %} 

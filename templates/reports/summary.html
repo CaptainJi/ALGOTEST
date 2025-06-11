@@ -214,16 +214,16 @@
                                     </td>
                                     <td>
                                         ${reports.length > 0 ? 
-                                            `<div class="small text-muted">
+                                            reports.map(r => `<div class="small text-muted">
                                                 <i class="bi bi-folder me-1"></i>
-                                                ${reports[0].path}
-                                            </div>` : 
+                                                ${r.filename}
+                                            </div>`).join('') : 
                                             '<span class="badge bg-secondary">暂无报告</span>'
                                         }
                                     </td>
                                     <td>
                                         ${reports.length > 0 ? 
-                                            formatDate(reports[0].created_at) : 
+                                            reports.map(r => formatDate(r.created_at)).join('<br>') : 
                                             '-'
                                         }
                                     </td>
@@ -233,10 +233,10 @@
                                                 <i class="bi bi-eye me-1"></i>查看
                                             </a>
                                             ${reports.length > 0 ? 
-                                                `<a href="/api/reports/download/${task.task_id}/${reports[0].filename}" 
+                                                reports.map(r => `<a href="/api/reports/download/${task.task_id}/${r.filename}" 
                                                     class="btn btn-outline-success">
                                                     <i class="bi bi-download me-1"></i>下载
-                                                </a>` : 
+                                                </a>`).join('') : 
                                                 ''
                                             }
                                             <button type="button" class="btn btn-outline-info"
